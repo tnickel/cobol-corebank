@@ -13,6 +13,7 @@
 <body class="dark-theme sim-page">
     <div class="ambient-glow glow-1"></div>
     <div class="ambient-glow glow-2"></div>
+    <div class="ambient-glow glow-sim"></div>
 
     <div class="app-container sim-container">
         <header class="app-header sim-header">
@@ -25,7 +26,7 @@
                 </div>
                 <div>
                     <h1 class="brand-title">Kunden<span>Simulator</span></h1>
-                    <p class="brand-subtitle">N parallele Bankkunden · echte HTTP-Verbindungen</p>
+                    <p class="brand-subtitle">Parallele Bankkunden · Live-Aktivität · HTTP Loopback</p>
                 </div>
             </div>
 
@@ -41,6 +42,7 @@
             </div>
         </header>
 
+        <!-- Hero metrics -->
         <section class="sim-hero-stats">
             <div class="sim-stat">
                 <span class="sim-stat-label">Aktive Clients</span>
@@ -60,21 +62,68 @@
             </div>
         </section>
 
+        <!-- Visual stage -->
+        <section class="sim-stage panel" id="simStage">
+            <div class="panel-header">
+                <div class="panel-title-group">
+                    <div class="load-live-pill" id="simLivePill">
+                        <span class="load-live-dot"></span>
+                        LIVE FEED
+                    </div>
+                    <h2 class="panel-title">Aktivitätsraum</h2>
+                    <span class="panel-tag panel-tag-admin">NOW</span>
+                </div>
+                <div class="sim-now-banner" id="simNowBanner">
+                    Bereit — Szenario konfigurieren und starten
+                </div>
+            </div>
+            <div class="sim-stage-grid">
+                <div class="sim-canvas-wrap">
+                    <canvas id="simOrbitCanvas" width="720" height="320"></canvas>
+                    <div class="sim-canvas-caption">Clients im Orbit · Puls = aktive Buchung</div>
+                </div>
+                <div class="sim-spark-wrap">
+                    <div class="sim-spark-head">
+                        <span>Durchsatz-Verlauf</span>
+                        <strong id="sparkTpsLabel">0.0 TPS</strong>
+                    </div>
+                    <canvas id="simSparkCanvas" width="360" height="140"></canvas>
+                    <div class="sim-mix-bars">
+                        <div class="sim-mix-bar">
+                            <span>Transfer</span>
+                            <div class="track"><i id="mixTransferFill"></i></div>
+                            <strong id="mixTransferPct">0%</strong>
+                        </div>
+                        <div class="sim-mix-bar">
+                            <span>Deposit</span>
+                            <div class="track"><i id="mixDepositFill"></i></div>
+                            <strong id="mixDepositPct">0%</strong>
+                        </div>
+                        <div class="sim-mix-bar">
+                            <span>Read</span>
+                            <div class="track"><i id="mixReadFill"></i></div>
+                            <strong id="mixReadPct">0%</strong>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
         <div class="sim-layout">
             <section class="panel sim-controls">
                 <div class="panel-header">
-                    <h2 class="panel-title">Szenario konfigurieren</h2>
+                    <h2 class="panel-title">Szenario</h2>
                     <span class="panel-tag panel-tag-admin">SIM</span>
                 </div>
 
                 <form id="simForm" class="sim-form">
                     <div class="sim-field">
                         <div class="sim-field-head">
-                            <label for="cfgClients">Parallele Kunden (Verbindungen)</label>
+                            <label for="cfgClients">Parallele Kunden</label>
                             <strong id="cfgClientsLabel">25</strong>
                         </div>
                         <input type="range" id="cfgClients" min="1" max="100" value="25" step="1">
-                        <div class="sim-field-hint">Jeder Kunde = eigene simulierte Client-ID (HTTP Loopback)</div>
+                        <div class="sim-field-hint">Jede Verbindung = Client-ID <code>sim:N</code></div>
                     </div>
 
                     <div class="sim-field">
@@ -103,27 +152,23 @@
                         <label>Transaktionsmix</label>
                         <div class="sim-mix" id="cfgMix">
                             <button type="button" class="sim-mix-btn active" data-mix="mixed">Gemischt</button>
-                            <button type="button" class="sim-mix-btn" data-mix="transfer">Nur Überweisungen</button>
-                            <button type="button" class="sim-mix-btn" data-mix="deposit">Nur Einzahlungen</button>
-                            <button type="button" class="sim-mix-btn" data-mix="read">Nur Abfragen</button>
+                            <button type="button" class="sim-mix-btn" data-mix="transfer">Überweisungen</button>
+                            <button type="button" class="sim-mix-btn" data-mix="deposit">Einzahlungen</button>
+                            <button type="button" class="sim-mix-btn" data-mix="read">Abfragen</button>
                         </div>
                     </div>
 
                     <div class="sim-presets">
                         <span class="sim-presets-label">Schnellwahl</span>
-                        <button type="button" class="btn btn-secondary btn-sm" data-preset="light">Leicht (10×5)</button>
-                        <button type="button" class="btn btn-secondary btn-sm" data-preset="medium">Mittel (25×10)</button>
-                        <button type="button" class="btn btn-secondary btn-sm" data-preset="heavy">Stark (50×20)</button>
-                        <button type="button" class="btn btn-secondary btn-sm" data-preset="burst">Burst (100×5)</button>
+                        <button type="button" class="btn btn-secondary btn-sm" data-preset="light">Leicht</button>
+                        <button type="button" class="btn btn-secondary btn-sm" data-preset="medium">Mittel</button>
+                        <button type="button" class="btn btn-secondary btn-sm" data-preset="heavy">Stark</button>
+                        <button type="button" class="btn btn-secondary btn-sm" data-preset="burst">Burst</button>
                     </div>
 
                     <div class="sim-actions">
-                        <button type="submit" class="btn btn-primary btn-block" id="btnStart">
-                            Simulation starten
-                        </button>
-                        <button type="button" class="btn btn-secondary btn-block" id="btnStop" disabled>
-                            Stoppen
-                        </button>
+                        <button type="submit" class="btn btn-primary btn-block" id="btnStart">Simulation starten</button>
+                        <button type="button" class="btn btn-secondary btn-block" id="btnStop" disabled>Stoppen</button>
                     </div>
                 </form>
             </section>
@@ -145,39 +190,37 @@
                 </div>
 
                 <div class="sim-breakdown">
-                    <div class="sim-break-card">
-                        <span>Transfers OK</span>
-                        <strong id="brkTransfers">0</strong>
-                    </div>
-                    <div class="sim-break-card">
-                        <span>Einzahlungen OK</span>
-                        <strong id="brkDeposits">0</strong>
-                    </div>
-                    <div class="sim-break-card">
-                        <span>Reads OK</span>
-                        <strong id="brkReads">0</strong>
-                    </div>
-                    <div class="sim-break-card">
-                        <span>Clients fertig</span>
-                        <strong id="brkFinished">0</strong>
-                    </div>
+                    <div class="sim-break-card"><span>Transfers OK</span><strong id="brkTransfers">0</strong></div>
+                    <div class="sim-break-card"><span>Einzahlungen OK</span><strong id="brkDeposits">0</strong></div>
+                    <div class="sim-break-card"><span>Reads OK</span><strong id="brkReads">0</strong></div>
+                    <div class="sim-break-card"><span>Clients fertig</span><strong id="brkFinished">0</strong></div>
                 </div>
 
-                <div class="sim-log-panel">
-                    <div class="sim-log-head">Ereignisprotokoll</div>
-                    <pre class="sim-log" id="simLog">Bereit. Konfiguration wählen und starten.</pre>
+                <div class="sim-activity-head">
+                    <h3>Was gerade passiert</h3>
+                    <span id="activityCount">0 Events</span>
                 </div>
-
-                <p class="sim-footnote">
-                    Die simulierten Kunden rufen die Bank-API unter
-                    <code>127.0.0.1</code> auf und erscheinen im Admin unter
-                    „Aktive Clients“ als <code>sim:1 … sim:N</code>.
-                </p>
+                <div class="sim-activity-feed" id="activityFeed">
+                    <div class="sim-activity-empty">Noch keine Aktivität — Simulation starten.</div>
+                </div>
             </section>
         </div>
+
+        <!-- Client grid -->
+        <section class="panel sim-clients-panel">
+            <div class="panel-header">
+                <div class="panel-title-group">
+                    <h2 class="panel-title">Client-Status</h2>
+                    <span class="panel-tag panel-tag-admin">DETAIL</span>
+                </div>
+                <span class="sim-clients-hint" id="clientsHint">Warte auf Start…</span>
+            </div>
+            <div class="sim-client-grid" id="clientGrid"></div>
+        </section>
     </div>
 
     <div id="toastContainer" class="toast-container"></div>
+    <script src="/simulator/js/sim-viz.js"></script>
     <script src="/simulator/js/simulator.js"></script>
 </body>
 </html>

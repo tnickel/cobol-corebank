@@ -23,6 +23,7 @@ Das Admin Interface ist **kein** Endkunden-Frontend, sondern die Bankbetriebs-Ko
 - Zinslauf-Batch
 - Parallelbetrieb-Telemetrie und Stress-Test
 - COBOL Core Inspector (letztes CLI-Kommando + stdout)
+- **Realtime Serverlast-Studio** (Charts, Gauges, Partikel, Load Index)
 - Link zum [Kunden-Simulator](SIMULATOR.md)
 
 ---
@@ -34,6 +35,7 @@ Das Admin Interface ist **kein** Endkunden-Frontend, sondern die Bankbetriebs-Ko
 | `frontend/index.html` | Layout, KPI-Grid, Panels, Modals |
 | `frontend/css/style.css` | Design System (Dark Glassmorphism) |
 | `frontend/js/app.js` | Polling, Rendering, Formulare, Stress-Test |
+| `frontend/js/load-viz.js` | Canvas-Visualisierung der Serverlast (Charts, Gauges, Partikel) |
 
 ---
 
@@ -55,6 +57,20 @@ Zusätzlich im Panel „Last & Parallelbetrieb“:
 - One-Click-Stress-Test (100 Transfers / 100 Reads)
 
 Simulierte Kunden (über den Simulator) erscheinen als Clients `sim:1` … `sim:N` und treiben TPS sowie Verbindungszahlen mit.
+
+### Serverlast-Studio (Realtime)
+
+Unter den KPI-Karten: Panel **„Serverlast · Realtime“**.
+
+| Element | Darstellung |
+|---|---|
+| Hauptchart | 60‑Sekunden-Historie: TPS (Fläche + Glow), Clients, Verbindungen, Worker |
+| Gauges | System Load Index (0–100), Throughput, Worker-Pool-Auslastung |
+| Balken | HTTP in flight, Queue depth, Active clients (animierte Füllung) |
+| Partikel | Aktivitätsfeld — Intensität skaliert mit dem Load Index |
+| LIVE-Pill | Pulsiert; wechselt bei hoher Last (Index ≥ 60) in „hot“ |
+
+Animation: `requestAnimationFrame` mit Interpolation der Anzeigewerte; Daten kommen aus dem 1‑Sekunden-Status-Polling.
 
 ---
 

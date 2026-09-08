@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="860" height="280" viewBox="0 0 860 280" role="img" aria-label="Simulator Preview">
+  <defs>
+    <radialGradient id="core" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#22d3ee" stop-opacity="0.55"/>
+      <stop offset="100%" stop-color="#22d3ee" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="860" height="280" rx="20" fill="#080c14" stroke="#1e293b"/>
+  <text x="28" y="36" fill="#f8fafc" font-family="Segoe UI, Arial, sans-serif" font-size="16" font-weight="700">Simulator · Aktivitätsraum</text>
+  <text x="28" y="58" fill="#64748b" font-family="Segoe UI, Arial, sans-serif" font-size="11">Orbit der Clients · Event-Feed · Live was gerade passiert</text>
+
+  <rect x="28" y="78" width="500" height="170" rx="12" fill="#020617" stroke="#1e293b"/>
+  <circle cx="278" cy="163" r="70" fill="url(#core)"/>
+  <circle cx="278" cy="163" r="22" fill="#0b1220" stroke="#22d3ee" stroke-width="2"/>
+  <text x="278" y="167" text-anchor="middle" fill="#e2e8f0" font-family="Segoe UI, Arial, sans-serif" font-size="10" font-weight="700">CORE</text>
+
+  <!-- orbit clients -->
+  <circle cx="278" cy="95" r="6" fill="#818cf8"/>
+  <circle cx="350" cy="130" r="7" fill="#fbbf24"/>
+  <circle cx="355" cy="200" r="6" fill="#34d399"/>
+  <circle cx="290" cy="230" r="5" fill="#22d3ee"/>
+  <circle cx="210" cy="210" r="6" fill="#818cf8"/>
+  <circle cx="195" cy="140" r="7" fill="#fbbf24"/>
+  <line x1="278" y1="163" x2="350" y2="130" stroke="#fbbf2488" stroke-width="1.5"/>
+  <line x1="278" y1="163" x2="195" y2="140" stroke="#fbbf2488" stroke-width="1.5"/>
+
+  <!-- feed -->
+  <rect x="550" y="78" width="280" height="170" rx="12" fill="#020617" stroke="#1e293b"/>
+  <text x="568" y="104" fill="#67e8f9" font-family="Consolas, monospace" font-size="11">14:02:11  TRANSFER</text>
+  <text x="568" y="122" fill="#94a3b8" font-family="Segoe UI, Arial, sans-serif" font-size="11">sim:3 ’ DE8937& ’ DE8937&</text>
+  <text x="568" y="150" fill="#6ee7b7" font-family="Consolas, monospace" font-size="11">14:02:11  DEPOSIT</text>
+  <text x="568" y="168" fill="#94a3b8" font-family="Segoe UI, Arial, sans-serif" font-size="11">sim:7 +0.01 EUR</text>
+  <text x="568" y="196" fill="#a5b4fc" font-family="Consolas, monospace" font-size="11">14:02:12  READ</text>
+  <text x="568" y="214" fill="#94a3b8" font-family="Segoe UI, Arial, sans-serif" font-size="11">sim:12 Kontenliste</text>
+</svg>

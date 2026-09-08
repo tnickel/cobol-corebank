@@ -195,6 +195,27 @@ Stoppt die laufende Simulation (wartet auf Ende der Client-Loops).
     "last_error": null,
     "elapsed_ms": 4200,
     "tps": 44.0
-  }
+  },
+  "clients": [
+    {
+      "id": 1,
+      "status": "running",
+      "action": "TRANSFER",
+      "detail": "DE8937…3000 → DE8937…3001 · 0.01",
+      "step": 3,
+      "total": 10,
+      "ok": 2,
+      "fail": 0
+    }
+  ],
+  "recent_events": [
+    {
+      "ts": "…",
+      "level": "ok",
+      "client_id": 1,
+      "action": "TRANSFER",
+      "message": "Client 1: TRANSFER DE8937… → DE8937…"
+    }
+  ]
 }
 ```

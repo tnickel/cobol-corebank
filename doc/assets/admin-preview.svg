@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="860" height="280" viewBox="0 0 860 280" role="img" aria-label="Admin Interface Preview">
+  <defs>
+    <linearGradient id="abg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#080c14"/>
+      <stop offset="100%" stop-color="#0f172a"/>
+    </linearGradient>
+    <linearGradient id="line" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#06b6d4" stop-opacity="0.2"/>
+      <stop offset="50%" stop-color="#22d3ee"/>
+      <stop offset="100%" stop-color="#34d399" stop-opacity="0.3"/>
+    </linearGradient>
+  </defs>
+  <rect width="860" height="280" rx="20" fill="url(#abg)" stroke="#1e293b"/>
+  <text x="28" y="36" fill="#f8fafc" font-family="Segoe UI, Arial, sans-serif" font-size="16" font-weight="700">Admin · Serverlast Realtime</text>
+  <text x="28" y="58" fill="#64748b" font-family="Segoe UI, Arial, sans-serif" font-size="11">TPS · Clients · Verbindungen · Worker · Load Index</text>
+
+  <!-- fake chart area -->
+  <rect x="28" y="78" width="520" height="170" rx="12" fill="#020617" stroke="#1e293b"/>
+  <polyline fill="none" stroke="url(#line)" stroke-width="3" points="48,210 90,190 130,195 170,160 210,150 250,155 290,120 330,130 370,100 410,115 450,95 490,105 540,88"/>
+  <polyline fill="none" stroke="#fbbf24" stroke-width="1.6" opacity="0.85" points="48,200 90,198 130,185 170,188 210,175 250,170 290,165 330,150 370,155 410,140 450,145 490,135 540,130"/>
+  <polyline fill="none" stroke="#a78bfa" stroke-width="1.4" opacity="0.8" points="48,220 90,215 130,218 170,210 210,205 250,200 290,195 330,190 370,185 410,180 450,175 490,170 540,165"/>
+
+  <!-- gauges -->
+  <g transform="translate(580,90)">
+    <circle cx="50" cy="55" r="40" fill="none" stroke="#1e293b" stroke-width="10"/>
+    <path d="M22 78 A40 40 0 1 1 78 78" fill="none" stroke="#22d3ee" stroke-width="10" stroke-linecap="round"/>
+    <text x="50" y="58" text-anchor="middle" fill="#e2e8f0" font-family="Segoe UI, Arial, sans-serif" font-size="16" font-weight="700">72</text>
+    <text x="50" y="112" text-anchor="middle" fill="#94a3b8" font-family="Segoe UI, Arial, sans-serif" font-size="11">Load</text>
+  </g>
+  <g transform="translate(700,90)">
+    <circle cx="50" cy="55" r="40" fill="none" stroke="#1e293b" stroke-width="10"/>
+    <path d="M22 78 A40 40 0 1 1 70 30" fill="none" stroke="#34d399" stroke-width="10" stroke-linecap="round"/>
+    <text x="50" y="58" text-anchor="middle" fill="#e2e8f0" font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="700">18.4</text>
+    <text x="50" y="112" text-anchor="middle" fill="#94a3b8" font-family="Segoe UI, Arial, sans-serif" font-size="11">TPS</text>
+  </g>
+</svg>

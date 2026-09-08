@@ -41,4 +41,12 @@ Voraussetzung: **Docker Desktop** (PostgreSQL 16).
      PostgreSQL 16  (Docker: cobolbank-postgres)
 ```
 
-Verwandte Einstiegsdateien im Repo-Root: [../README.md](../README.md), [../docker-compose.yml](../docker-compose.yml).
+Verwandte Einstiegsdateien im Repo-Root: [../README.md](../README.md) (Demo-Übersicht mit Diagrammen), [../docker-compose.yml](../docker-compose.yml).
+
+### Grafiken
+
+| Datei | Inhalt |
+|---|---|
+| [assets/architecture.svg](assets/architecture.svg) | Architektur-Übersicht |
+| [assets/admin-preview.svg](assets/admin-preview.svg) | Admin Last-Studio Konzept |
+| [assets/simulator-preview.svg](assets/simulator-preview.svg) | Simulator Aktivitätsraum |

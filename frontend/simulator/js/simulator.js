@@ -11,12 +11,18 @@ const cfgTotalLabel = document.getElementById('cfgTotalLabel');
 const simForm = document.getElementById('simForm');
 const btnStart = document.getElementById('btnStart');
 const btnStop = document.getElementById('btnStop');
-const simLog = document.getElementById('simLog');
 const toastContainer = document.getElementById('toastContainer');
+const activityFeed = document.getElementById('activityFeed');
+const clientGrid = document.getElementById('clientGrid');
+const simNowBanner = document.getElementById('simNowBanner');
+const simStage = document.getElementById('simStage');
+const simLivePill = document.getElementById('simLivePill');
 
 let selectedMix = 'mixed';
 let pollTimer = null;
 let wasRunning = false;
+let lastEventTs = null;
+let knownEventKeys = new Set();
 
 function showToast(message, type = 'success') {
     if (!toastContainer) return;
@@ -25,17 +31,6 @@ function showToast(message, type = 'success') {
     toast.innerHTML = `<span class="toast-text">${message}</span>`;
     toastContainer.appendChild(toast);
     setTimeout(() => toast.remove(), 3500);
-}
-
-function logLine(msg) {
-    const ts = new Date().toLocaleTimeString('de-DE');
-    const line = `[${ts}] ${msg}`;
-    if (simLog.textContent.startsWith('Bereit.')) {
-        simLog.textContent = line;
-    } else {
-        simLog.textContent = `${simLog.textContent}\n${line}`;
-    }
-    simLog.scrollTop = simLog.scrollHeight;
 }
 
 function syncLabels() {
@@ -86,6 +81,8 @@ function setRunningUi(running, done = false) {
     const monitorBadge = document.getElementById('monitorBadge');
     badge.classList.toggle('is-running', running);
     badge.classList.toggle('is-done', !running && done);
+    simStage?.classList.toggle('is-running', running);
+    simLivePill?.classList.toggle('is-hot', running);
     if (running) {
         text.textContent = 'Simulation läuft';
         monitorBadge.textContent = 'Running';
@@ -96,6 +93,134 @@ function setRunningUi(running, done = false) {
         text.textContent = 'Bereit';
         monitorBadge.textContent = 'Idle';
     }
+}
+
+function formatTime(iso) {
+    try {
+        return new Date(iso).toLocaleTimeString('de-DE', {
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit'
+        });
+    } catch {
+        return '--:--:--';
+    }
+}
+
+function renderActivityFeed(events) {
+    if (!activityFeed) return;
+    if (!events || !events.length) {
+        activityFeed.innerHTML = '<div class="sim-activity-empty">Noch keine Aktivität — Simulation starten.</div>';
+        document.getElementById('activityCount').textContent = '0 Events';
+        return;
+    }
+
+    document.getElementById('activityCount').textContent = `${events.length} Events`;
+
+    // Detect new leading event for pulse
+    const newest = events[0];
+    const key = `${newest.ts}|${newest.message}`;
+    let pulse = false;
+    if (lastEventTs && key !== lastEventTs && !knownEventKeys.has(key)) {
+        pulse = newest.level === 'ok' || newest.action === 'TRANSFER' || newest.action === 'DEPOSIT';
+    }
+    lastEventTs = key;
+    knownEventKeys.add(key);
+    if (knownEventKeys.size > 200) {
+        knownEventKeys = new Set([...knownEventKeys].slice(-100));
+    }
+
+    activityFeed.innerHTML = events.slice(0, 35).map((e) => `
+        <div class="sim-event ${e.level || 'info'}">
+            <span class="t">${formatTime(e.ts)}</span>
+            <span class="a">${e.action || 'EVT'}</span>
+            <span class="m">${escapeHtml(e.message || '')}</span>
+        </div>
+    `).join('');
+
+    return pulse;
+}
+
+function escapeHtml(str) {
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+function renderClientGrid(clients) {
+    if (!clientGrid) return;
+    const hint = document.getElementById('clientsHint');
+    if (!clients || !clients.length) {
+        clientGrid.innerHTML = '';
+        if (hint) hint.textContent = 'Warte auf Start…';
+        return;
+    }
+    if (hint) {
+        const running = clients.filter((c) => c.status === 'running').length;
+        hint.textContent = `${running} aktiv · ${clients.length} gesamt`;
+    }
+
+    // Cap DOM cards for performance when many clients
+    const show = clients.length > 60 ? clients.filter((c) => c.status === 'running').concat(
+        clients.filter((c) => c.status !== 'running').slice(0, 40)
+    ).slice(0, 60) : clients;
+
+    clientGrid.innerHTML = show.map((c) => {
+        const pct = c.total > 0 ? Math.round((c.step / c.total) * 100) : 0;
+        return `
+            <div class="sim-client-card is-${c.status || 'idle'}">
+                <div class="sim-client-top">
+                    <span class="sim-client-id">sim:${c.id}</span>
+                    <span class="sim-client-action ${c.action || ''}">${c.action || 'IDLE'}</span>
+                </div>
+                <div class="sim-client-detail">${escapeHtml(c.detail || '—')}</div>
+                <div class="sim-client-meta">
+                    <span>${c.step || 0}/${c.total || 0}</span>
+                    <span>OK ${c.ok || 0} · Err ${c.fail || 0}</span>
+                </div>
+                <div class="sim-client-bar"><i style="width:${pct}%"></i></div>
+            </div>
+        `;
+    }).join('');
+}
+
+function updateNowBanner(status) {
+    if (!simNowBanner) return;
+    const clients = status.clients || [];
+    const active = clients.filter((c) => c.status === 'running' && c.action && c.action !== 'WAIT' && c.action !== 'DONE');
+    if (!status.running) {
+        if (wasRunning || status.finished_at) {
+            simNowBanner.textContent = 'Simulation beendet — Details im Event-Feed';
+        } else {
+            simNowBanner.textContent = 'Bereit — Szenario konfigurieren und starten';
+        }
+        return;
+    }
+    if (!active.length) {
+        simNowBanner.textContent = 'Clients starten / warten…';
+        return;
+    }
+    const sample = active[0];
+    const more = active.length > 1 ? ` · +${active.length - 1} weitere aktiv` : '';
+    simNowBanner.textContent = `sim:${sample.id} → ${sample.action}: ${sample.detail || ''}${more}`;
+}
+
+function updateMixBars(s) {
+    const total = Math.max(1, (s.transfers_ok || 0) + (s.deposits_ok || 0) + (s.reads_ok || 0));
+    const tPct = Math.round(((s.transfers_ok || 0) / total) * 100);
+    const dPct = Math.round(((s.deposits_ok || 0) / total) * 100);
+    const rPct = Math.round(((s.reads_ok || 0) / total) * 100);
+    const set = (fillId, pctId, pct) => {
+        const f = document.getElementById(fillId);
+        const p = document.getElementById(pctId);
+        if (f) f.style.width = `${pct}%`;
+        if (p) p.textContent = `${pct}%`;
+    };
+    set('mixTransferFill', 'mixTransferPct', tPct);
+    set('mixDepositFill', 'mixDepositPct', dPct);
+    set('mixReadFill', 'mixReadPct', rPct);
 }
 
 function renderStatus(status) {
@@ -118,8 +243,21 @@ function renderStatus(status) {
     document.getElementById('brkFinished').textContent =
         `${s.clients_finished ?? 0} / ${cfg.clients || s.clients_configured || 0}`;
 
-    if (s.last_error && status.running) {
-        // keep last error visible in log occasionally via polling diff would be noisy; skip
+    const sparkLabel = document.getElementById('sparkTpsLabel');
+    if (sparkLabel) sparkLabel.textContent = `${Number(s.tps || 0).toFixed(1)} TPS`;
+
+    updateMixBars(s);
+    updateNowBanner(status);
+    const pulse = renderActivityFeed(status.recent_events || []);
+    renderClientGrid(status.clients || []);
+
+    if (window.SimViz) {
+        SimViz.update({
+            running: status.running,
+            clients: status.clients || [],
+            tps: Number(s.tps || 0),
+            pulse: !!pulse
+        });
     }
 }
 
@@ -137,12 +275,10 @@ async function pollStatus() {
             if (wasRunning) {
                 wasRunning = false;
                 const s = status.stats || {};
-                logLine(
-                    `Fertig — OK ${s.transactions_ok}, Fehler ${s.transactions_failed}, ` +
-                    `TPS ${s.tps}, Dauer ${(s.elapsed_ms / 1000).toFixed(1)}s` +
-                    (s.last_error ? ` | Letzter Fehler: ${s.last_error}` : '')
+                showToast(
+                    `Fertig: ${s.transactions_ok} OK / ${s.transactions_failed} Fehler`,
+                    s.transactions_failed ? 'error' : 'success'
                 );
-                showToast('Simulation abgeschlossen', s.transactions_failed ? 'error' : 'success');
             }
             if (pollTimer) {
                 clearInterval(pollTimer);
@@ -156,12 +292,14 @@ async function pollStatus() {
 
 function startPolling() {
     if (pollTimer) clearInterval(pollTimer);
-    pollTimer = setInterval(pollStatus, 400);
+    pollTimer = setInterval(pollStatus, 280);
     pollStatus();
 }
 
 simForm.addEventListener('submit', async (e) => {
     e.preventDefault();
+    knownEventKeys.clear();
+    lastEventTs = null;
     const body = {
         clients: Number(cfgClients.value),
         txs_per_client: Number(cfgTxs.value),
@@ -183,10 +321,7 @@ simForm.addEventListener('submit', async (e) => {
         }
         wasRunning = true;
         setRunningUi(true);
-        logLine(
-            `Start: ${body.clients} Clients × ${body.txs_per_client} Tx ` +
-            `(Mix=${body.mix}, Betrag=${body.amount}, Delay=${body.delay_ms}ms)`
-        );
+        simNowBanner.textContent = `Starte ${body.clients} Clients…`;
         showToast('Simulation gestartet');
         startPolling();
     } catch (err) {
@@ -197,7 +332,7 @@ simForm.addEventListener('submit', async (e) => {
 btnStop.addEventListener('click', async () => {
     try {
         btnStop.disabled = true;
-        logLine('Stop angefordert…');
+        simNowBanner.textContent = 'Stop angefordert…';
         const res = await fetch(`${API}/api/simulate/stop`, { method: 'POST' });
         const result = await res.json();
         if (!result.ok) {
@@ -213,5 +348,7 @@ btnStop.addEventListener('click', async () => {
     }
 });
 
-// Initial status
-pollStatus();
+document.addEventListener('DOMContentLoaded', () => {
+    if (window.SimViz) SimViz.init();
+    pollStatus();
+});

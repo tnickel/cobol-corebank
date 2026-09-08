@@ -53,7 +53,8 @@ Warum HTTP-Loopback statt direktem `runCobol`?
 |---|---|
 | `frontend/simulator/index.html` | UI: Slider, Mix, Presets, Monitor |
 | `frontend/simulator/css/simulator.css` | Simulator-Layout |
-| `frontend/simulator/js/simulator.js` | Start/Stop, Polling, Labels |
+| `frontend/simulator/js/simulator.js` | Start/Stop, Polling, Feed, Client-Grid |
+| `frontend/simulator/js/sim-viz.js` | Orbit-Canvas + TPS-Sparkline |
 | `backend/simulator.js` | Klasse `CustomerSimulator` |
 | `startsimmulator.bat` | Offizieller Starter |
 
@@ -109,7 +110,11 @@ Es kann nur **eine** Simulation gleichzeitig laufen (HTTP 409 bei Doppelstart).
 - Aktive Clients, OK/Fehler, Durchsatz (TPS), Laufzeit
 - Fortschrittsbalken relativ zu `clients × txs_per_client`
 - Breakdown: Transfers OK, Einzahlungen OK, Reads OK, Clients fertig
-- Ereignisprotokoll (Start-/Stop-/Ergebniszeilen)
+- **Aktivitätsraum:** Orbit-Visualisierung der Clients, TPS-Sparkline, Mix-Balken
+- **„Was gerade passiert“:** Live-Event-Feed (TRANSFER / DEPOSIT / READ / …)
+- **Client-Status-Grid:** pro `sim:N` aktuelle Aktion, Detailtext, Fortschritt
+
+Status-API liefert zusätzlich `clients[]` und `recent_events[]`.
 
 ---
 

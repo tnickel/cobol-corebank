@@ -206,6 +206,20 @@ async function loadSystemStatus() {
             if (queuePeakVal) queuePeakVal.textContent = q.peak_depth ?? 0;
         }
 
+        if (window.LoadViz) {
+            const live = data.live || {};
+            const q = data.queue || {};
+            LoadViz.pushSample({
+                tps: live.transactions_per_sec || 0,
+                clients: live.clients_active || 0,
+                connections: live.connections_active ?? live.tcp_connections ?? 0,
+                workers: q.active_workers || 0,
+                workerMax: q.concurrency || 16,
+                queueDepth: q.depth || 0,
+                httpInFlight: live.http_requests_active || 0
+            });
+        }
+
         if (data.last_execution) {
             updateInspector(
                 data.last_execution.durationMs,
@@ -848,6 +862,7 @@ btnStressReads?.addEventListener('click', () => runStressTest('READ'));
 
 // Initial Boot
 document.addEventListener('DOMContentLoaded', () => {
+    if (window.LoadViz) LoadViz.init();
     loadAccounts();
     loadTransactions();
     loadSystemStatus();

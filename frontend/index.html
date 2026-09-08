@@ -194,6 +194,80 @@
             </div>
         </section>
 
+        <!-- Live Server Load Studio -->
+        <section class="load-studio panel" id="loadStudio" aria-label="Serverlast Visualisierung">
+            <div class="panel-header load-studio-header">
+                <div class="panel-title-group">
+                    <div class="load-live-pill" id="loadLivePill">
+                        <span class="load-live-dot"></span>
+                        LIVE
+                    </div>
+                    <h2 class="panel-title">Serverlast · Realtime</h2>
+                    <span class="panel-tag panel-tag-admin">TELEMETRY</span>
+                </div>
+                <div class="load-studio-meta">
+                    <span class="load-meta-chip">Fenster <strong id="loadWindowLabel">60s</strong></span>
+                    <span class="load-meta-chip">Peak TPS <strong id="loadPeakTps">0.0</strong></span>
+                    <span class="load-meta-chip load-index-chip">Load Index <strong id="loadIndexValue">0</strong></span>
+                </div>
+            </div>
+
+            <div class="load-studio-grid">
+                <div class="load-chart-pane">
+                    <div class="load-chart-legend">
+                        <span class="leg leg-tps"><i></i> TPS</span>
+                        <span class="leg leg-clients"><i></i> Clients</span>
+                        <span class="leg leg-conn"><i></i> Verbindungen</span>
+                        <span class="leg leg-workers"><i></i> Worker</span>
+                    </div>
+                    <canvas id="loadMainChart" width="960" height="280"></canvas>
+                    <div class="load-chart-glow" aria-hidden="true"></div>
+                </div>
+
+                <div class="load-gauges-pane">
+                    <div class="gauge-card">
+                        <canvas id="gaugeLoad" width="160" height="160"></canvas>
+                        <div class="gauge-caption">
+                            <span class="gauge-title">System Load</span>
+                            <span class="gauge-sub" id="gaugeLoadSub">Idle</span>
+                        </div>
+                    </div>
+                    <div class="gauge-card">
+                        <canvas id="gaugeTps" width="160" height="160"></canvas>
+                        <div class="gauge-caption">
+                            <span class="gauge-title">Throughput</span>
+                            <span class="gauge-sub" id="gaugeTpsSub">0.0 TPS</span>
+                        </div>
+                    </div>
+                    <div class="gauge-card">
+                        <canvas id="gaugeWorkers" width="160" height="160"></canvas>
+                        <div class="gauge-caption">
+                            <span class="gauge-title">Worker Pool</span>
+                            <span class="gauge-sub" id="gaugeWorkersSub">0 / 16</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="load-bars-row">
+                <div class="load-bar-block">
+                    <div class="load-bar-head"><span>HTTP in flight</span><strong id="barHttpVal">0</strong></div>
+                    <div class="load-bar-track"><div class="load-bar-fill bar-http" id="barHttpFill"></div></div>
+                </div>
+                <div class="load-bar-block">
+                    <div class="load-bar-head"><span>Queue depth</span><strong id="barQueueVal">0</strong></div>
+                    <div class="load-bar-track"><div class="load-bar-fill bar-queue" id="barQueueFill"></div></div>
+                </div>
+                <div class="load-bar-block">
+                    <div class="load-bar-head"><span>Active clients</span><strong id="barClientsVal">0</strong></div>
+                    <div class="load-bar-track"><div class="load-bar-fill bar-clients" id="barClientsFill"></div></div>
+                </div>
+                <div class="load-activity" aria-hidden="true">
+                    <canvas id="loadParticles" width="320" height="56"></canvas>
+                </div>
+            </div>
+        </section>
+
         <!-- Main Workspace: Accounts & Transactions & COBOL Inspector -->
         <main class="main-layout">
             <!-- Left Area: Accounts & Transactions -->
@@ -523,6 +597,7 @@
     <!-- Floating Toast Container -->
     <div class="toast-container" id="toastContainer"></div>
 
+    <script src="js/load-viz.js"></script>
     <script src="js/app.js"></script>
 </body>
 </html>
