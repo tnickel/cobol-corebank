@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="860" height="280" viewBox="0 0 860 280" role="img" aria-label="Simulator Preview">
   <defs>
     <radialGradient id="core" cx="50%" cy="50%" r="50%">
@@ -6,8 +7,8 @@
     </radialGradient>
   </defs>
   <rect width="860" height="280" rx="20" fill="#080c14" stroke="#1e293b"/>
-  <text x="28" y="36" fill="#f8fafc" font-family="Segoe UI, Arial, sans-serif" font-size="16" font-weight="700">Simulator · Aktivitätsraum</text>
-  <text x="28" y="58" fill="#64748b" font-family="Segoe UI, Arial, sans-serif" font-size="11">Orbit der Clients · Event-Feed · Live was gerade passiert</text>
+  <text x="28" y="36" fill="#f8fafc" font-family="Segoe UI, Arial, sans-serif" font-size="16" font-weight="700">Simulator ï¿½ Aktivitï¿½tsraum</text>
+  <text x="28" y="58" fill="#64748b" font-family="Segoe UI, Arial, sans-serif" font-size="11">Orbit der Clients ï¿½ Event-Feed ï¿½ Live -was gerade passiert-</text>
 
   <rect x="28" y="78" width="500" height="170" rx="12" fill="#020617" stroke="#1e293b"/>
   <circle cx="278" cy="163" r="70" fill="url(#core)"/>
@@ -27,7 +28,7 @@
   <!-- feed -->
   <rect x="550" y="78" width="280" height="170" rx="12" fill="#020617" stroke="#1e293b"/>
   <text x="568" y="104" fill="#67e8f9" font-family="Consolas, monospace" font-size="11">14:02:11  TRANSFER</text>
-  <text x="568" y="122" fill="#94a3b8" font-family="Segoe UI, Arial, sans-serif" font-size="11">sim:3 ’ DE8937& ’ DE8937&</text>
+  <text x="568" y="122" fill="#94a3b8" font-family="Segoe UI, Arial, sans-serif" font-size="11">sim:3 ï¿½ DE8937& ï¿½ DE8937&</text>
   <text x="568" y="150" fill="#6ee7b7" font-family="Consolas, monospace" font-size="11">14:02:11  DEPOSIT</text>
   <text x="568" y="168" fill="#94a3b8" font-family="Segoe UI, Arial, sans-serif" font-size="11">sim:7 +0.01 EUR</text>
   <text x="568" y="196" fill="#a5b4fc" font-family="Consolas, monospace" font-size="11">14:02:12  READ</text>
