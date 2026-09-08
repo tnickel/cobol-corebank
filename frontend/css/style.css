@@ -1062,10 +1062,17 @@ label {
     font-size: 0.9rem;
 }
 
-/* CICS Queue & Concurrency Panel */
+/* CICS Queue & Concurrency Panel — full width under main columns */
 .queue-panel {
     border-color: rgba(168, 85, 247, 0.25);
     background: linear-gradient(180deg, rgba(21, 32, 59, 0.75) 0%, rgba(15, 23, 42, 0.85) 100%);
+    min-width: 0;
+    overflow: hidden;
+}
+
+.queue-panel-full {
+    grid-column: 1 / -1;
+    width: 100%;
 }
 
 .queue-panel .panel-title {
@@ -1087,14 +1094,14 @@ label {
 
 .queue-stats-grid {
     display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 10px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
     margin-bottom: 16px;
 }
 
-@media (min-width: 480px) {
+@media (min-width: 720px) {
     .queue-stats-grid {
-        grid-template-columns: repeat(4, 1fr);
+        grid-template-columns: repeat(4, minmax(0, 1fr));
     }
 }
 
@@ -1102,9 +1109,10 @@ label {
     background: rgba(0, 0, 0, 0.3);
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-sm);
-    padding: 10px 12px;
+    padding: 12px 14px;
     display: flex;
     flex-direction: column;
+    min-width: 0;
 }
 
 .q-stat-label {
@@ -1136,6 +1144,13 @@ label {
     border: 1px dashed rgba(168, 85, 247, 0.3);
     border-radius: var(--radius-md);
     padding: 14px;
+    min-width: 0;
+}
+
+.stress-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
 }
 
 .stress-header {
@@ -1165,12 +1180,6 @@ label {
     color: var(--text-secondary);
     margin-bottom: 12px;
     line-height: 1.4;
-}
-
-.stress-buttons {
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
 }
 
 .btn-sm {

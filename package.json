@@ -7,7 +7,10 @@
     "start": "node backend/server.js",
     "build:cobol": "powershell -ExecutionPolicy Bypass -File ./scripts/build_cobol.ps1",
     "db:up": "powershell -ExecutionPolicy Bypass -File ./scripts/start_postgres.ps1",
-    "db:down": "docker compose down"
+    "db:down": "docker compose down",
+    "test": "node --test tests/**/*.test.js",
+    "test:unit": "node --test tests/simulator.unit.test.js",
+    "test:integration": "node --test tests/server.integration.test.js tests/admin.display.test.js"
   },
   "keywords": ["cobol", "gnucobol", "postgresql", "banking", "gixsql"],
   "author": "Antigravity & Pair Developer",

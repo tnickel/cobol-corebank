@@ -251,11 +251,84 @@
     font-size: 0.7rem;
 }
 
+.sim-field-toggle {
+    padding: 12px 14px;
+    border: 1px solid rgba(34, 211, 238, 0.25);
+    border-radius: var(--radius-sm);
+    background: rgba(6, 182, 212, 0.08);
+}
+
+.sim-toggle {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.sim-toggle input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.sim-toggle-ui {
+    width: 44px;
+    height: 24px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.12);
+    border: 1px solid var(--border-subtle);
+    position: relative;
+    flex-shrink: 0;
+    transition: background 0.2s, border-color 0.2s;
+}
+
+.sim-toggle-ui::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #fff;
+    transition: transform 0.2s;
+}
+
+.sim-toggle input:checked + .sim-toggle-ui {
+    background: rgba(6, 182, 212, 0.55);
+    border-color: rgba(34, 211, 238, 0.7);
+}
+
+.sim-toggle input:checked + .sim-toggle-ui::after {
+    transform: translateX(20px);
+}
+
+.sim-toggle-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.sim-toggle-text strong {
+    font-size: 0.9rem;
+    color: var(--text-primary);
+}
+
+.sim-toggle-text small {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+}
+
 .sim-mix {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 8px;
     margin-top: 8px;
+}
+
+.sim-mix-btn[data-mix="ops"] {
+    grid-column: 1 / -1;
 }
 
 .sim-mix-btn {

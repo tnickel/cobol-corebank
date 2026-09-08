@@ -7,10 +7,12 @@ const API_BASE = window.location.origin;
 // State
 let accounts = [];
 let transactions = [];
+let totalTransactions = 0;
 let systemStatus = {};
 let currentAccountFilter = 'ALL';
 let currentTxFilter = 'ALL';
 let searchQuery = '';
+let journalPollMs = 4000;
 
 // DOM Elements
 const kpiTotalLiquidity = document.getElementById('kpiTotalLiquidity');
@@ -117,13 +119,14 @@ function showToast(message, type = 'success') {
     const container = document.getElementById('toastContainer');
     const toast = document.createElement('div');
     toast.className = `toast toast-${type}`;
-    
-    const icon = type === 'success' ? '✓' : '⚠';
-    toast.innerHTML = `
-        <span class="toast-icon font-bold">${icon}</span>
-        <span class="toast-text">${message}</span>
-    `;
-
+    const icon = document.createElement('span');
+    icon.className = 'toast-icon font-bold';
+    icon.textContent = type === 'success' ? '✓' : '⚠';
+    const text = document.createElement('span');
+    text.className = 'toast-text';
+    text.textContent = message;
+    toast.appendChild(icon);
+    toast.appendChild(text);
     container.appendChild(toast);
     setTimeout(() => {
         toast.style.opacity = '0';
@@ -193,27 +196,32 @@ async function loadSystemStatus() {
 
         if (data.queue) {
             const q = data.queue;
+            const activeShown = Math.max(q.active_workers || 0, q.recent_active_workers || 0);
+            const conc = q.concurrency || 16;
             if (kpiQueueDepth) {
-                kpiQueueDepth.textContent = `${q.active_workers || 0} aktiv`;
+                kpiQueueDepth.textContent = `${activeShown} / ${conc}`;
             }
             if (kpiProcessedCount) kpiProcessedCount.textContent = q.total_processed ?? 0;
-            if (kpiPeakDepth) kpiPeakDepth.textContent = q.peak_depth ?? 0;
+            if (kpiPeakDepth) kpiPeakDepth.textContent = q.peak_active_workers ?? 0;
             if (queueDepthVal) queueDepthVal.textContent = q.depth ?? 0;
             if (queueActiveVal) queueActiveVal.textContent = q.active_workers ?? 0;
             if (queueProcessedVal) queueProcessedVal.textContent = q.total_processed ?? 0;
             if (queueFailedVal) queueFailedVal.textContent = q.total_failed ?? 0;
             if (queueLatencyVal) queueLatencyVal.textContent = `${q.avg_latency_ms ?? 0} ms`;
             if (queuePeakVal) queuePeakVal.textContent = q.peak_depth ?? 0;
+            const peakWorkersEl = document.getElementById('queuePeakWorkersVal');
+            if (peakWorkersEl) peakWorkersEl.textContent = q.peak_active_workers ?? 0;
         }
 
         if (window.LoadViz) {
             const live = data.live || {};
             const q = data.queue || {};
+            const workersShown = Math.max(q.active_workers || 0, q.recent_active_workers || 0);
             LoadViz.pushSample({
                 tps: live.transactions_per_sec || 0,
                 clients: live.clients_active || 0,
                 connections: live.connections_active ?? live.tcp_connections ?? 0,
-                workers: q.active_workers || 0,
+                workers: workersShown,
                 workerMax: q.concurrency || 16,
                 queueDepth: q.depth || 0,
                 httpInFlight: live.http_requests_active || 0
@@ -227,6 +235,14 @@ async function loadSystemStatus() {
                 data.last_execution.stdout
             );
         }
+
+        const busy = (data.queue && (
+            (data.queue.active_workers || 0) > 0 ||
+            (data.queue.recent_active_workers || 0) > 0 ||
+            (data.queue.depth || 0) > 0
+        )) || (data.simulator && data.simulator.running);
+        window.__adminStatusPollMs = busy ? 400 : 1000;
+        journalPollMs = busy ? 2000 : 5000;
     } catch (err) {
         console.error('Failed to load system status:', err);
     }
@@ -264,9 +280,19 @@ async function loadTransactions() {
         const res = await fetch(`${API_BASE}/api/transactions`);
         const result = await res.json();
 
-        if (result.data && result.data.transactions) {
+        if (result.success && result.data && Array.isArray(result.data.transactions)) {
             transactions = result.data.transactions;
+            totalTransactions = Number(result.data.total_transactions ?? transactions.length) || 0;
             renderTransactions();
+        } else if (result.data && result.data.raw) {
+            // Fallback: maxBuffer/partial — try extract total from raw JSON prefix
+            const m = String(result.data.raw).match(/"total_transactions"\s*:\s*(\d+)/);
+            if (m) {
+                totalTransactions = Number(m[1]) || totalTransactions;
+                if (txCounter) txCounter.textContent = `${totalTransactions} Buchungen`;
+                if (kpiTransactionCount) kpiTransactionCount.textContent = totalTransactions;
+            }
+            console.warn('LIST_TRANSACTIONS incomplete', result.data.status || result.exitCode);
         }
     } catch (err) {
         console.error('Error fetching transactions:', err);
@@ -338,8 +364,8 @@ function renderAccounts() {
                 </div>
                 
                 <div class="account-iban-row">
-                    <span>${acc.account_no}</span>
-                    <button class="btn-copy-iban" onclick="copyIban('${acc.account_no}')" title="IBAN kopieren">
+                    <span>${escapeHtml(acc.account_no)}</span>
+                    <button type="button" class="btn-copy-iban" data-action="copy-iban" data-iban="${escapeAttr(acc.account_no)}" title="IBAN kopieren">
                         <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
                             <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
                             <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
@@ -355,10 +381,10 @@ function renderAccounts() {
                 <div class="account-card-footer">
                     ${interestInfo}
                     <div class="account-actions">
-                        <button class="btn btn-secondary btn-sm" onclick="openDepositFor('${acc.account_no}')">
+                        <button type="button" class="btn btn-secondary btn-sm" data-action="deposit" data-iban="${escapeAttr(acc.account_no)}">
                             + Einzahlen
                         </button>
-                        <button class="btn btn-primary btn-sm" onclick="openTransferFrom('${acc.account_no}')">
+                        <button type="button" class="btn btn-primary btn-sm" data-action="transfer" data-iban="${escapeAttr(acc.account_no)}">
                             Überweisen
                         </button>
                     </div>
@@ -380,10 +406,13 @@ function renderTransactions() {
     });
 
     if (txCounter) {
-        txCounter.textContent = `${filtered.length} Buchungen`;
+        const shown = filtered.length;
+        txCounter.textContent = totalTransactions > shown
+            ? `${totalTransactions} Buchungen · letzte ${shown}`
+            : `${totalTransactions || shown} Buchungen`;
     }
     if (kpiTransactionCount) {
-        kpiTransactionCount.textContent = transactions.length;
+        kpiTransactionCount.textContent = totalTransactions || transactions.length;
     }
 
     if (filtered.length === 0) {
@@ -429,11 +458,11 @@ function renderTransactions() {
  */
 function populateSelectOptions() {
     const fromOptions = accounts.map(a => 
-        `<option value="${a.account_no}">${escapeHtml(a.holder_name)} (${formatCurrency(a.balance)})</option>`
+        `<option value="${escapeAttr(a.account_no)}">${escapeHtml(a.holder_name)} (${formatCurrency(a.balance)})</option>`
     ).join('');
 
     const toOptions = accounts.map(a => 
-        `<option value="${a.account_no}">${escapeHtml(a.holder_name)} - ${a.account_no}</option>`
+        `<option value="${escapeAttr(a.account_no)}">${escapeHtml(a.holder_name)} - ${escapeHtml(a.account_no)}</option>`
     ).join('');
 
     if (qtFromAccount) {
@@ -798,8 +827,29 @@ document.getElementById('btnRefreshAccounts')?.addEventListener('click', () => {
 qtFromAccount?.addEventListener('change', updateFromBalanceHint);
 
 function escapeHtml(str) {
-    if (!str) return '';
-    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    if (str === null || str === undefined) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function escapeAttr(str) {
+    return escapeHtml(str);
+}
+
+if (accountsGrid) {
+    accountsGrid.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-action]');
+        if (!btn) return;
+        const iban = btn.getAttribute('data-iban');
+        if (!iban) return;
+        if (btn.dataset.action === 'copy-iban') copyIban(iban);
+        if (btn.dataset.action === 'deposit') openDepositFor(iban);
+        if (btn.dataset.action === 'transfer') openTransferFrom(iban);
+    });
 }
 
 /**
@@ -865,10 +915,21 @@ document.addEventListener('DOMContentLoaded', () => {
     if (window.LoadViz) LoadViz.init();
     loadAccounts();
     loadTransactions();
-    loadSystemStatus();
 
-    // Live telemetry every second (clients / connections / TPS)
-    setInterval(() => {
-        loadSystemStatus();
-    }, 1000);
+    const pollStatus = async () => {
+        await loadSystemStatus();
+        setTimeout(pollStatus, window.__adminStatusPollMs || 1000);
+    };
+    pollStatus();
+
+    const pollJournal = async () => {
+        await loadTransactions();
+        // Accounts/liquidity also move under simulator writes
+        if ((systemStatus.simulator && systemStatus.simulator.running) ||
+            (systemStatus.queue && (systemStatus.queue.recent_active_workers || 0) > 0)) {
+            await loadAccounts();
+        }
+        setTimeout(pollJournal, journalPollMs || 4000);
+    };
+    setTimeout(pollJournal, 2500);
 });

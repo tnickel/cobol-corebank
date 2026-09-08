@@ -40,6 +40,10 @@
        01  NEWBAL               PIC S9(9)V99.
        01  CALCINT              PIC S9(9)V99.
        01  ACCEXISTS            PIC 9(5) VALUE 0.
+       01  OLDSUM               PIC S9(11)V99.
+       01  NEWSUM               PIC S9(11)V99.
+       01  CHECKFROM            PIC S9(9)V99.
+       01  CHECKTO              PIC S9(9)V99.
 
       * Loop & status controls
        01  WSEOF                PIC X VALUE 'N'.
@@ -329,6 +333,7 @@
                       status
                FROM transactions
                ORDER BY id DESC
+               LIMIT 200
            END-EXEC.
 
            EXEC SQL OPEN c_tx END-EXEC.
@@ -439,6 +444,14 @@
                 :ACCBAL, :ACCCURR, :ACCINT, :ACCSTAT)
            END-EXEC.
 
+           IF SQLCODE NOT = 0
+               EXEC SQL ROLLBACK WORK END-EXEC
+               DISPLAY '{"status":"error",' NO ADVANCING
+               DISPLAY '"message":"Account insert failed"}'
+               MOVE 1 TO RETURN-CODE
+               EXIT PARAGRAPH
+           END-IF.
+
            IF ACCBAL > 0
                MOVE "SYSTEM_INIT" TO TXFROM
                MOVE "DEPOSIT" TO TXTYPE
@@ -452,6 +465,13 @@
                    (:TXFROM, :ACCNO, :ACCBAL,
                     :TXTYPE, :TXNOTE, :TXSTAT)
                END-EXEC
+               IF SQLCODE NOT = 0
+                   EXEC SQL ROLLBACK WORK END-EXEC
+                   DISPLAY '{"status":"error",' NO ADVANCING
+                   DISPLAY '"message":"Seed tx insert failed"}'
+                   MOVE 1 TO RETURN-CODE
+                   EXIT PARAGRAPH
+               END-IF
            END-IF.
 
            EXEC SQL COMMIT WORK END-EXEC.
@@ -504,7 +524,7 @@
                EXIT PARAGRAPH
            END-IF.
 
-      * Atomic UPDATEs (GixSQL mangles FOR UPDATE into invalid SQL)
+      * Atomic UPDATEs + conservation check (GixSQL has no reliable ROW_COUNT)
            EXEC SQL BEGIN WORK END-EXEC.
 
            EXEC SQL
@@ -550,6 +570,8 @@
                EXIT PARAGRAPH
            END-IF.
 
+           COMPUTE OLDSUM = FROMBAL + TOBAL.
+
            EXEC SQL
                UPDATE accounts
                SET balance = balance - :XFERAMT
@@ -579,6 +601,27 @@
                EXIT PARAGRAPH
            END-IF.
 
+      * Detect 0-row debit (SQLCODE still 0): sum of both accounts must
+      * stay conserved within this transaction
+           EXEC SQL
+               SELECT balance INTO :CHECKFROM
+               FROM accounts
+               WHERE account_no = TRIM(:TXFROM)
+           END-EXEC.
+           EXEC SQL
+               SELECT balance INTO :CHECKTO
+               FROM accounts
+               WHERE account_no = TRIM(:TXTO)
+           END-EXEC.
+           COMPUTE NEWSUM = CHECKFROM + CHECKTO.
+           IF NEWSUM NOT = OLDSUM
+               EXEC SQL ROLLBACK WORK END-EXEC
+               DISPLAY '{"status":"error",' NO ADVANCING
+               DISPLAY '"message":"Transfer conflict"}'
+               MOVE 1 TO RETURN-CODE
+               EXIT PARAGRAPH
+           END-IF.
+
            MOVE "TRANSFER" TO TXTYPE.
            MOVE "SUCCESS" TO TXSTAT.
            EXEC SQL
@@ -589,6 +632,14 @@
                (:TXFROM, :TXTO, :XFERAMT,
                 :TXTYPE, :TXNOTE, :TXSTAT)
            END-EXEC.
+
+           IF SQLCODE NOT = 0
+               EXEC SQL ROLLBACK WORK END-EXEC
+               DISPLAY '{"status":"error",' NO ADVANCING
+               DISPLAY '"message":"Journal insert failed"}'
+               MOVE 1 TO RETURN-CODE
+               EXIT PARAGRAPH
+           END-IF.
 
            EXEC SQL COMMIT WORK END-EXEC.
 
@@ -711,26 +762,27 @@
                    COMPUTE CALCINT ROUNDED =
                        ACCBAL * (ACCINT / 100) / 12
                    IF CALCINT > 0
-                       COMPUTE NEWBAL = ACCBAL + CALCINT
                        EXEC SQL
                            UPDATE accounts
-                           SET balance = :NEWBAL
+                           SET balance = balance + :CALCINT
                            WHERE id = :ACCID
                        END-EXEC
-                       MOVE "ZINSLAUF" TO TXFROM
-                       MOVE "INTEREST" TO TXTYPE
-                       MOVE "Monatliche Zinsgutschrift" TO TXNOTE
-                       MOVE "SUCCESS" TO TXSTAT
-                       EXEC SQL
-                           INSERT INTO transactions
-                           (from_account, to_account, amount, tx_type,
-                            description, status)
-                           VALUES
-                           (:TXFROM, :ACCNO, :CALCINT,
-                            :TXTYPE, :TXNOTE, :TXSTAT)
-                       END-EXEC
-                       ADD CALCINT TO TOTALINT
-                       ADD 1 TO INTACCS
+                       IF SQLCODE = 0
+                           MOVE "ZINSLAUF" TO TXFROM
+                           MOVE "INTEREST" TO TXTYPE
+                           MOVE "Monatliche Zinsgutschrift" TO TXNOTE
+                           MOVE "SUCCESS" TO TXSTAT
+                           EXEC SQL
+                               INSERT INTO transactions
+                               (from_account, to_account, amount,
+                                tx_type, description, status)
+                               VALUES
+                               (:TXFROM, :ACCNO, :CALCINT,
+                                :TXTYPE, :TXNOTE, :TXSTAT)
+                           END-EXEC
+                           ADD CALCINT TO TOTALINT
+                           ADD 1 TO INTACCS
+                       END-IF
                    END-IF
                ELSE
                    MOVE 'Y' TO WSEOF

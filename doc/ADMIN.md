@@ -1,6 +1,6 @@
 # Admin Interface
 
-Betriebs- und Steuerungsoberfläche der CoreBank unter **http://localhost:3000/**.
+Betriebs- und Steuerungsoberfläche der CoreBank unter **http://127.0.0.1:3000/** (nur localhost).
 
 ## Start
 
@@ -8,9 +8,8 @@ Betriebs- und Steuerungsoberfläche der CoreBank unter **http://localhost:3000/*
 startadmin.bat
 ```
 
-Alias: `start.bat` → ruft `startadmin.bat` auf.
-
-Voraussetzungen und Ablauf: [OPERATIONS.md](OPERATIONS.md).
+Voraussetzungen und Ablauf: [OPERATIONS.md](OPERATIONS.md).  
+Sicherheit / XSS-Hardening: [CODE_REVIEW.md](CODE_REVIEW.md).
 
 ---
 

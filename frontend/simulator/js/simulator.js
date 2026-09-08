@@ -4,10 +4,13 @@ const cfgClients = document.getElementById('cfgClients');
 const cfgTxs = document.getElementById('cfgTxs');
 const cfgDelay = document.getElementById('cfgDelay');
 const cfgAmount = document.getElementById('cfgAmount');
+const cfgContinuous = document.getElementById('cfgContinuous');
 const cfgClientsLabel = document.getElementById('cfgClientsLabel');
 const cfgTxsLabel = document.getElementById('cfgTxsLabel');
 const cfgDelayLabel = document.getElementById('cfgDelayLabel');
 const cfgTotalLabel = document.getElementById('cfgTotalLabel');
+const cfgTxsHint = document.getElementById('cfgTxsHint');
+const cfgTxsTitle = document.getElementById('cfgTxsTitle');
 const simForm = document.getElementById('simForm');
 const btnStart = document.getElementById('btnStart');
 const btnStop = document.getElementById('btnStop');
@@ -18,7 +21,7 @@ const simNowBanner = document.getElementById('simNowBanner');
 const simStage = document.getElementById('simStage');
 const simLivePill = document.getElementById('simLivePill');
 
-let selectedMix = 'mixed';
+let selectedMix = 'ops';
 let pollTimer = null;
 let wasRunning = false;
 let lastEventTs = null;
@@ -33,18 +36,36 @@ function showToast(message, type = 'success') {
     setTimeout(() => toast.remove(), 3500);
 }
 
+function isContinuous() {
+    return !!(cfgContinuous && cfgContinuous.checked);
+}
+
 function syncLabels() {
     const clients = Number(cfgClients.value);
     const txs = Number(cfgTxs.value);
     cfgClientsLabel.textContent = String(clients);
     cfgTxsLabel.textContent = String(txs);
     cfgDelayLabel.textContent = `${cfgDelay.value} ms`;
-    cfgTotalLabel.textContent = String(clients * txs);
+    if (isContinuous()) {
+        if (cfgTxsTitle) cfgTxsTitle.textContent = 'Tx pro Runde (Loop)';
+        if (cfgTxsHint) {
+            cfgTxsHint.innerHTML = `Dauerbetrieb bis Stop · Rundenlänge ${txs} · parallele Writes in PostgreSQL`;
+        }
+        if (cfgTotalLabel) cfgTotalLabel.textContent = '∞';
+        if (btnStart) btnStart.textContent = 'Dauerbetrieb starten';
+    } else {
+        if (cfgTxsTitle) cfgTxsTitle.textContent = 'Transaktionen pro Kunde';
+        if (cfgTxsHint) {
+            cfgTxsHint.innerHTML = `Batch-Lauf · Gesamt: <span id="cfgTotalLabel">${clients * txs}</span>`;
+        }
+        if (btnStart) btnStart.textContent = 'Batch starten';
+    }
 }
 
 cfgClients.addEventListener('input', syncLabels);
 cfgTxs.addEventListener('input', syncLabels);
 cfgDelay.addEventListener('input', syncLabels);
+cfgContinuous?.addEventListener('change', syncLabels);
 syncLabels();
 
 document.getElementById('cfgMix').addEventListener('click', (e) => {
@@ -58,22 +79,31 @@ document.getElementById('cfgMix').addEventListener('click', (e) => {
 document.querySelectorAll('[data-preset]').forEach((btn) => {
     btn.addEventListener('click', () => {
         const presets = {
-            light: { clients: 10, txs: 5, delay: 0 },
-            medium: { clients: 25, txs: 10, delay: 0 },
-            heavy: { clients: 50, txs: 20, delay: 0 },
-            burst: { clients: 100, txs: 5, delay: 0 }
+            production: { clients: 20, txs: 10, delay: 200, continuous: true, mix: 'ops', amount: 0.01 },
+            light: { clients: 10, txs: 5, delay: 100, continuous: true, mix: 'ops' },
+            medium: { clients: 25, txs: 10, delay: 50, continuous: true, mix: 'ops' },
+            heavy: { clients: 50, txs: 20, delay: 0, continuous: true, mix: 'ops' },
+            burst: { clients: 80, txs: 15, delay: 0, continuous: false, mix: 'transfer' }
         };
         const p = presets[btn.dataset.preset];
         if (!p) return;
         cfgClients.value = p.clients;
         cfgTxs.value = p.txs;
         cfgDelay.value = p.delay;
+        if (cfgContinuous) cfgContinuous.checked = !!p.continuous;
+        if (p.amount != null) cfgAmount.value = p.amount;
+        if (p.mix) {
+            selectedMix = p.mix;
+            document.querySelectorAll('.sim-mix-btn').forEach((b) => {
+                b.classList.toggle('active', b.dataset.mix === p.mix);
+            });
+        }
         syncLabels();
         showToast(`Preset „${btn.textContent.trim()}“ geladen`);
     });
 });
 
-function setRunningUi(running, done = false) {
+function setRunningUi(running, done = false, continuous = false) {
     btnStart.disabled = running;
     btnStop.disabled = !running;
     const badge = document.getElementById('simRunBadge');
@@ -84,10 +114,10 @@ function setRunningUi(running, done = false) {
     simStage?.classList.toggle('is-running', running);
     simLivePill?.classList.toggle('is-hot', running);
     if (running) {
-        text.textContent = 'Simulation läuft';
-        monitorBadge.textContent = 'Running';
+        text.textContent = continuous ? 'Dauerbetrieb' : 'Simulation läuft';
+        monitorBadge.textContent = continuous ? 'Loop' : 'Running';
     } else if (done) {
-        text.textContent = 'Abgeschlossen';
+        text.textContent = 'Gestoppt / fertig';
         monitorBadge.textContent = 'Done';
     } else {
         text.textContent = 'Bereit';
@@ -117,7 +147,6 @@ function renderActivityFeed(events) {
 
     document.getElementById('activityCount').textContent = `${events.length} Events`;
 
-    // Detect new leading event for pulse
     const newest = events[0];
     const key = `${newest.ts}|${newest.message}`;
     let pulse = false;
@@ -149,7 +178,7 @@ function escapeHtml(str) {
         .replace(/"/g, '&quot;');
 }
 
-function renderClientGrid(clients) {
+function renderClientGrid(clients, continuous) {
     if (!clientGrid) return;
     const hint = document.getElementById('clientsHint');
     if (!clients || !clients.length) {
@@ -159,16 +188,22 @@ function renderClientGrid(clients) {
     }
     if (hint) {
         const running = clients.filter((c) => c.status === 'running').length;
-        hint.textContent = `${running} aktiv · ${clients.length} gesamt`;
+        hint.textContent = continuous
+            ? `${running} im Loop · ${clients.length} Clients`
+            : `${running} aktiv · ${clients.length} gesamt`;
     }
 
-    // Cap DOM cards for performance when many clients
     const show = clients.length > 60 ? clients.filter((c) => c.status === 'running').concat(
         clients.filter((c) => c.status !== 'running').slice(0, 40)
     ).slice(0, 60) : clients;
 
     clientGrid.innerHTML = show.map((c) => {
-        const pct = c.total > 0 ? Math.round((c.step / c.total) * 100) : 0;
+        const pct = continuous
+            ? Math.min(100, ((c.step || 0) % 20) * 5)
+            : (c.total > 0 ? Math.round((c.step / c.total) * 100) : 0);
+        const stepLabel = continuous
+            ? `#${c.step || 0} · R${c.round || 1}`
+            : `${c.step || 0}/${c.total || 0}`;
         return `
             <div class="sim-client-card is-${c.status || 'idle'}">
                 <div class="sim-client-top">
@@ -177,7 +212,7 @@ function renderClientGrid(clients) {
                 </div>
                 <div class="sim-client-detail">${escapeHtml(c.detail || '—')}</div>
                 <div class="sim-client-meta">
-                    <span>${c.step || 0}/${c.total || 0}</span>
+                    <span>${stepLabel}</span>
                     <span>OK ${c.ok || 0} · Err ${c.fail || 0}</span>
                 </div>
                 <div class="sim-client-bar"><i style="width:${pct}%"></i></div>
@@ -188,23 +223,25 @@ function renderClientGrid(clients) {
 
 function updateNowBanner(status) {
     if (!simNowBanner) return;
+    const continuous = !!(status.config && status.config.continuous);
     const clients = status.clients || [];
     const active = clients.filter((c) => c.status === 'running' && c.action && c.action !== 'WAIT' && c.action !== 'DONE');
     if (!status.running) {
         if (wasRunning || status.finished_at) {
-            simNowBanner.textContent = 'Simulation beendet — Details im Event-Feed';
+            simNowBanner.textContent = 'Gestoppt — Buchungen stehen in PostgreSQL / Admin-Journal';
         } else {
-            simNowBanner.textContent = 'Bereit — Szenario konfigurieren und starten';
+            simNowBanner.textContent = 'Bereit — Dauerbetrieb oder Batch starten';
         }
         return;
     }
     if (!active.length) {
-        simNowBanner.textContent = 'Clients starten / warten…';
+        simNowBanner.textContent = continuous ? 'Dauerbetrieb — Clients sync…' : 'Clients starten / warten…';
         return;
     }
     const sample = active[0];
-    const more = active.length > 1 ? ` · +${active.length - 1} weitere aktiv` : '';
-    simNowBanner.textContent = `sim:${sample.id} → ${sample.action}: ${sample.detail || ''}${more}`;
+    const more = active.length > 1 ? ` · +${active.length - 1} weitere` : '';
+    const mode = continuous ? 'LOOP ' : '';
+    simNowBanner.textContent = `${mode}sim:${sample.id} → ${sample.action}: ${sample.detail || ''}${more}`;
 }
 
 function updateMixBars(s) {
@@ -226,22 +263,29 @@ function updateMixBars(s) {
 function renderStatus(status) {
     const s = status.stats || {};
     const cfg = status.config || {};
-    const totalPlanned = (cfg.clients || 0) * (cfg.txs_per_client || 0);
+    const continuous = !!cfg.continuous;
+    const totalPlanned = continuous ? 0 : (cfg.clients || 0) * (cfg.txs_per_client || 0);
     const doneTx = (s.transactions_ok || 0) + (s.transactions_failed || 0);
-    const pct = totalPlanned > 0 ? Math.min(100, Math.round((doneTx / totalPlanned) * 100)) : 0;
+    const pct = continuous
+        ? 100
+        : (totalPlanned > 0 ? Math.min(100, Math.round((doneTx / totalPlanned) * 100)) : 0);
 
     document.getElementById('statClientsActive').textContent = s.clients_active ?? 0;
     document.getElementById('statOk').textContent = s.transactions_ok ?? 0;
     document.getElementById('statFail').textContent = s.transactions_failed ?? 0;
     document.getElementById('statTps').textContent = Number(s.tps || 0).toFixed(1);
     document.getElementById('statElapsed').textContent = `${((s.elapsed_ms || 0) / 1000).toFixed(1)}s`;
-    document.getElementById('progressPct').textContent = `${pct}%`;
-    document.getElementById('progressFill').style.width = `${pct}%`;
+    document.getElementById('progressPct').textContent = continuous ? '∞ LOOP' : `${pct}%`;
+    document.getElementById('progressFill').style.width = continuous
+        ? `${Math.min(100, 15 + (doneTx % 85))}%`
+        : `${pct}%`;
     document.getElementById('brkTransfers').textContent = s.transfers_ok ?? 0;
     document.getElementById('brkDeposits').textContent = s.deposits_ok ?? 0;
-    document.getElementById('brkReads').textContent = s.reads_ok ?? 0;
-    document.getElementById('brkFinished').textContent =
-        `${s.clients_finished ?? 0} / ${cfg.clients || s.clients_configured || 0}`;
+    const brkWrites = document.getElementById('brkWrites');
+    if (brkWrites) brkWrites.textContent = s.write_ok ?? ((s.transfers_ok || 0) + (s.deposits_ok || 0));
+    document.getElementById('brkFinished').textContent = continuous
+        ? `${s.rounds_completed ?? 0} Runden`
+        : `${s.clients_finished ?? 0} / ${cfg.clients || s.clients_configured || 0}`;
 
     const sparkLabel = document.getElementById('sparkTpsLabel');
     if (sparkLabel) sparkLabel.textContent = `${Number(s.tps || 0).toFixed(1)} TPS`;
@@ -249,7 +293,8 @@ function renderStatus(status) {
     updateMixBars(s);
     updateNowBanner(status);
     const pulse = renderActivityFeed(status.recent_events || []);
-    renderClientGrid(status.clients || []);
+    renderClientGrid(status.clients || [], continuous);
+    setRunningUi(!!status.running, !status.running && !!status.finished_at, continuous);
 
     if (window.SimViz) {
         SimViz.update({
@@ -269,14 +314,12 @@ async function pollStatus() {
 
         if (status.running) {
             wasRunning = true;
-            setRunningUi(true);
         } else {
-            setRunningUi(false, wasRunning);
             if (wasRunning) {
                 wasRunning = false;
                 const s = status.stats || {};
                 showToast(
-                    `Fertig: ${s.transactions_ok} OK / ${s.transactions_failed} Fehler`,
+                    `Ende: ${s.transactions_ok} OK · ${s.write_ok || 0} DB-Writes · ${s.transactions_failed} Fehler`,
                     s.transactions_failed ? 'error' : 'success'
                 );
             }
@@ -305,7 +348,8 @@ simForm.addEventListener('submit', async (e) => {
         txs_per_client: Number(cfgTxs.value),
         delay_ms: Number(cfgDelay.value),
         amount: Number(cfgAmount.value) || 0.01,
-        mix: selectedMix
+        mix: selectedMix,
+        continuous: isContinuous()
     };
 
     try {
@@ -320,9 +364,11 @@ simForm.addEventListener('submit', async (e) => {
             return;
         }
         wasRunning = true;
-        setRunningUi(true);
-        simNowBanner.textContent = `Starte ${body.clients} Clients…`;
-        showToast('Simulation gestartet');
+        setRunningUi(true, false, body.continuous);
+        simNowBanner.textContent = body.continuous
+            ? `Dauerbetrieb: ${body.clients} Clients schreiben in PostgreSQL…`
+            : `Batch: ${body.clients} Clients…`;
+        showToast(body.continuous ? 'Dauerbetrieb gestartet' : 'Batch gestartet');
         startPolling();
     } catch (err) {
         showToast('Verbindung zum Backend fehlgeschlagen', 'error');

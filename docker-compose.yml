@@ -10,12 +10,12 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - cobolbank_pgdata:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U cobol -d cobolbank"]
       interval: 3s
-      timeout: 5s
-      retries: 20
+      timeout: 3s
+      retries: 5
 
 volumes:
-  cobolbank_pgdata:
+  postgres_data:

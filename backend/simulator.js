@@ -2,7 +2,7 @@ const http = require('node:http');
 
 /**
  * Customer load simulator: N parallel clients calling the bank API via HTTP loopback.
- * Exposes live per-client activity + recent event feed for the Simulator UI.
+ * Supports batch runs and continuous (loop) mode for real DB write load.
  */
 class CustomerSimulator {
     constructor(port) {
@@ -17,6 +17,7 @@ class CustomerSimulator {
         this.clientStates = new Map();
         this.recentEvents = [];
         this.maxEvents = 80;
+        this._sharedAccounts = [];
     }
 
     _emptyStats() {
@@ -29,6 +30,8 @@ class CustomerSimulator {
             transfers_ok: 0,
             deposits_ok: 0,
             reads_ok: 0,
+            write_ok: 0,
+            rounds_completed: 0,
             last_error: null,
             elapsed_ms: 0
         };
@@ -53,7 +56,8 @@ class CustomerSimulator {
             step: 0,
             total: 0,
             ok: 0,
-            fail: 0
+            fail: 0,
+            round: 0
         };
         this.clientStates.set(id, { ...prev, ...patch, id, updated_at: Date.now() });
     }
@@ -71,6 +75,7 @@ class CustomerSimulator {
                 detail: c.detail,
                 step: c.step,
                 total: c.total,
+                round: c.round || 0,
                 ok: c.ok,
                 fail: c.fail
             }));
@@ -102,31 +107,42 @@ class CustomerSimulator {
         const txsPerClient = Math.min(Math.max(parseInt(rawConfig.txs_per_client, 10) || 5, 1), 500);
         const delayMs = Math.min(Math.max(parseInt(rawConfig.delay_ms, 10) || 0, 0), 10000);
         const amount = Math.max(parseFloat(rawConfig.amount) || 0.01, 0.01);
-        const mix = ['transfer', 'deposit', 'mixed', 'read'].includes(rawConfig.mix)
-            ? rawConfig.mix
-            : 'mixed';
+        const continuous = !!(rawConfig.continuous || rawConfig.loop || rawConfig.mode === 'continuous');
+        let mix = String(rawConfig.mix || 'ops').toLowerCase();
+        if (mix === 'transfers') mix = 'transfer';
+        if (mix === 'deposits') mix = 'deposit';
+        if (mix === 'betrieb' || mix === 'production' || mix === 'prod') mix = 'ops';
+        if (!['transfer', 'deposit', 'mixed', 'read', 'ops'].includes(mix)) {
+            mix = continuous ? 'ops' : 'mixed';
+        }
 
         this.config = {
             clients,
             txs_per_client: txsPerClient,
             delay_ms: delayMs,
             amount,
-            mix
+            mix,
+            continuous,
+            mode: continuous ? 'continuous' : 'batch'
         };
         this.stats = this._emptyStats();
         this.stats.clients_configured = clients;
         this.clientStates.clear();
         this.recentEvents = [];
+        this._sharedAccounts = [];
         this.running = true;
         this.stopRequested = false;
         this.startedAt = Date.now();
         this.finishedAt = null;
 
+        const modeLabel = continuous
+            ? `Dauerbetrieb (Loop) · Stop manuell`
+            : `Batch ${clients}×${txsPerClient}`;
         this._pushEvent({
             level: 'info',
             client_id: null,
             action: 'START',
-            message: `Simulation gestartet · ${clients} Clients × ${txsPerClient} Tx · Mix ${mix}`
+            message: `Simulation gestartet · ${clients} Clients · Mix ${mix} · ${modeLabel}`
         });
 
         this._runPromise = this._run().finally(() => {
@@ -138,8 +154,8 @@ class CustomerSimulator {
                 client_id: null,
                 action: this.stopRequested ? 'STOPPED' : 'DONE',
                 message: this.stopRequested
-                    ? 'Simulation gestoppt'
-                    : `Simulation beendet · OK ${this.stats.transactions_ok} / Fail ${this.stats.transactions_failed}`
+                    ? `Dauerbetrieb gestoppt · OK ${this.stats.transactions_ok} / Fail ${this.stats.transactions_failed} · Writes ${this.stats.write_ok}`
+                    : `Simulation beendet · OK ${this.stats.transactions_ok} / Fail ${this.stats.transactions_failed} · Writes ${this.stats.write_ok}`
             });
         });
 
@@ -199,17 +215,34 @@ class CustomerSimulator {
     async _loadAccounts(clientId) {
         const res = await this._httpJson('GET', '/api/accounts', null, clientId);
         const accounts = res.data?.data?.accounts || [];
-        return accounts.filter((a) => a.status === 'ACTIVE' || !a.status);
+        const active = accounts.filter((a) => a.status === 'ACTIVE' || !a.status);
+        if (active.length) this._sharedAccounts = active;
+        return active.length ? active : this._sharedAccounts;
     }
 
     _pickTxType(mix, index) {
         if (mix === 'transfer') return 'TRANSFER';
         if (mix === 'deposit') return 'DEPOSIT';
         if (mix === 'read') return 'READ';
+        // ops = Produktionsmix: echte DB-Schreibungen dominieren
+        if (mix === 'ops') {
+            const r = (index * 17 + 11) % 100;
+            if (r < 55) return 'TRANSFER';
+            if (r < 90) return 'DEPOSIT';
+            return 'READ';
+        }
+        // mixed: 2 Writes : 1 Read
         const cycle = index % 3;
         if (cycle === 0) return 'TRANSFER';
         if (cycle === 1) return 'DEPOSIT';
         return 'READ';
+    }
+
+    _txAmount(step) {
+        const base = this.config.amount;
+        // leichte Streuung für realistischere Buchungen (bleibt klein genug für Dauerlauf)
+        const jitter = ((step * 7) % 5) * 0.01;
+        return Math.round((base + jitter) * 100) / 100;
     }
 
     _shortIban(iban) {
@@ -218,141 +251,206 @@ class CustomerSimulator {
         return `${s.slice(0, 6)}…${s.slice(-4)}`;
     }
 
-    async _clientLoop(clientId, accounts) {
+    _isWriteSuccess(res) {
+        return !!(res.data && res.data.success && res.data.data && res.data.data.status === 'ok');
+    }
+
+    async _doDeposit(clientId, accounts, step, amount) {
+        if (accounts.length < 1) {
+            return { ok: false, detail: 'Keine Konten für Einzahlung', eventMsg: 'Keine Konten' };
+        }
+        const acc = accounts[(clientId + step) % accounts.length];
+        this._setClient(clientId, {
+            status: 'running',
+            action: 'DEPOSIT',
+            detail: `+${amount} → ${this._shortIban(acc.account_no)}`,
+            step
+        });
+        const res = await this._httpJson('POST', '/api/deposit', {
+            to_account: acc.account_no,
+            amount,
+            description: `SimClient ${clientId} Deposit #${step}`
+        }, clientId);
+        const ok = this._isWriteSuccess(res) || !!(res.data && res.data.success);
+        if (ok) {
+            this.stats.deposits_ok++;
+            this.stats.write_ok++;
+            return {
+                ok: true,
+                detail: `Einzahlung ${amount} EUR auf ${this._shortIban(acc.account_no)}`,
+                eventMsg: `Client ${clientId}: DEPOSIT ${amount} → ${this._shortIban(acc.account_no)}`
+            };
+        }
+        const err = res.data?.data?.message || res.data?.error || 'Deposit failed';
+        this.stats.last_error = err;
+        return { ok: false, detail: err, eventMsg: `Client ${clientId}: Deposit fehlgeschlagen — ${err}` };
+    }
+
+    async _doTransfer(clientId, accounts, step, amount) {
+        if (accounts.length < 2) {
+            return { ok: false, detail: 'Zu wenige Konten für Transfer', eventMsg: 'Zu wenige Konten' };
+        }
+        // Bevorzuge Konto mit Guthaben als Quelle
+        const sorted = [...accounts].sort((a, b) => Number(b.balance || 0) - Number(a.balance || 0));
+        const from = sorted[clientId % Math.min(sorted.length, 3)] || sorted[0];
+        let to = accounts[(clientId + 1 + step) % accounts.length];
+        if (to.account_no === from.account_no) {
+            to = accounts[(clientId + 2 + step) % accounts.length];
+        }
+        if (!to || from.account_no === to.account_no) {
+            return { ok: false, detail: 'Transfer übersprungen (gleiche Konten)', eventMsg: `Client ${clientId}: gleiche Konten` };
+        }
+
+        this._setClient(clientId, {
+            status: 'running',
+            action: 'TRANSFER',
+            detail: `${this._shortIban(from.account_no)} → ${this._shortIban(to.account_no)} · ${amount}`,
+            step
+        });
+        const res = await this._httpJson('POST', '/api/transfer', {
+            from_account: from.account_no,
+            to_account: to.account_no,
+            amount,
+            description: `SimClient ${clientId} Tx #${step}`
+        }, clientId);
+        const ok = this._isWriteSuccess(res) || !!(res.data && res.data.success);
+        if (ok) {
+            this.stats.transfers_ok++;
+            this.stats.write_ok++;
+            return {
+                ok: true,
+                detail: `Transfer ${amount} EUR`,
+                eventMsg: `Client ${clientId}: TRANSFER ${this._shortIban(from.account_no)} → ${this._shortIban(to.account_no)}`
+            };
+        }
+        const err = res.data?.data?.message || res.data?.error || 'Transfer failed';
+        this.stats.last_error = err;
+        return { ok: false, detail: err, eventMsg: `Client ${clientId}: Transfer fehlgeschlagen — ${err}` };
+    }
+
+    async _clientLoop(clientId) {
         this.stats.clients_active++;
+        const continuous = this.config.continuous;
+        const batchTotal = this.config.txs_per_client;
         this._setClient(clientId, {
             status: 'running',
             action: 'BOOT',
-            detail: 'Client gestartet',
+            detail: continuous ? 'Dauerbetrieb gestartet' : 'Client gestartet',
             step: 0,
-            total: this.config.txs_per_client,
+            total: continuous ? 0 : batchTotal,
+            round: 0,
             ok: 0,
             fail: 0
         });
 
+        let accounts = this._sharedAccounts.slice();
+        let step = 0;
+        let round = 0;
+
         try {
-            for (let i = 0; i < this.config.txs_per_client; i++) {
-                if (this.stopRequested) {
-                    this._setClient(clientId, {
-                        status: 'stopped',
-                        action: 'STOP',
-                        detail: 'Abbruch nach Stop-Signal',
-                        step: i
-                    });
-                    break;
+            while (!this.stopRequested) {
+                if (!continuous && step >= batchTotal) break;
+
+                step++;
+                if (continuous) {
+                    round = Math.floor((step - 1) / Math.max(1, batchTotal)) + 1;
                 }
 
-                const type = this._pickTxType(this.config.mix, i + clientId);
-                let ok = false;
-                let detail = '';
-                let eventMsg = '';
+                // Konten periodisch neu laden (frische Salden für echte Transfers)
+                if (step === 1 || step % 8 === 0 || accounts.length < 2) {
+                    this._setClient(clientId, { action: 'SYNC', detail: 'Konten/Salden laden…', step, round });
+                    accounts = await this._loadAccounts(clientId);
+                }
+
+                const type = this._pickTxType(this.config.mix, step + clientId);
+                const amount = this._txAmount(step);
+                let result = { ok: false, detail: '', eventMsg: '' };
 
                 if (type === 'READ') {
                     this._setClient(clientId, {
                         status: 'running',
                         action: 'READ',
                         detail: 'LIST_ACCOUNTS …',
-                        step: i + 1
+                        step,
+                        round
                     });
                     const res = await this._httpJson('GET', '/api/accounts', null, clientId);
-                    ok = !!(res.data && res.data.success);
-                    detail = ok ? 'Kontenliste gelesen' : (res.data?.error || 'Read fehlgeschlagen');
-                    eventMsg = ok ? `Client ${clientId}: Konten abgefragt` : `Client ${clientId}: Read fehlgeschlagen`;
-                    if (ok) this.stats.reads_ok++;
-                } else if (type === 'DEPOSIT') {
-                    if (accounts.length < 1) {
-                        this.stats.last_error = 'Keine Konten für Einzahlung';
-                        detail = this.stats.last_error;
-                        eventMsg = detail;
-                    } else {
-                        const acc = accounts[clientId % accounts.length];
-                        this._setClient(clientId, {
-                            status: 'running',
-                            action: 'DEPOSIT',
-                            detail: `+${this.config.amount} → ${this._shortIban(acc.account_no)}`,
-                            step: i + 1
-                        });
-                        const res = await this._httpJson('POST', '/api/deposit', {
-                            to_account: acc.account_no,
-                            amount: this.config.amount,
-                            description: `SimClient ${clientId} Deposit #${i + 1}`
-                        }, clientId);
-                        ok = !!(res.data && res.data.success);
-                        if (ok) {
-                            this.stats.deposits_ok++;
-                            detail = `Einzahlung ${this.config.amount} EUR auf ${this._shortIban(acc.account_no)}`;
-                            eventMsg = `Client ${clientId}: DEPOSIT ${this.config.amount} → ${this._shortIban(acc.account_no)}`;
-                        } else {
-                            this.stats.last_error = res.data?.data?.message || res.data?.error || 'Deposit failed';
-                            detail = this.stats.last_error;
-                            eventMsg = `Client ${clientId}: Deposit fehlgeschlagen — ${detail}`;
+                    result.ok = !!(res.data && res.data.success);
+                    if (result.ok) {
+                        this.stats.reads_ok++;
+                        const list = res.data?.data?.accounts || [];
+                        if (list.length) {
+                            accounts = list.filter((a) => a.status === 'ACTIVE' || !a.status);
+                            this._sharedAccounts = accounts;
                         }
+                        result.detail = 'Kontenliste gelesen';
+                        result.eventMsg = `Client ${clientId}: Konten abgefragt`;
+                    } else {
+                        result.detail = res.data?.error || 'Read fehlgeschlagen';
+                        result.eventMsg = `Client ${clientId}: Read fehlgeschlagen`;
                     }
-                } else if (accounts.length < 2) {
-                    this.stats.last_error = 'Zu wenige Konten für Transfer';
-                    detail = this.stats.last_error;
-                    eventMsg = detail;
+                } else if (type === 'DEPOSIT') {
+                    result = await this._doDeposit(clientId, accounts, step, amount);
                 } else {
-                    const from = accounts[clientId % accounts.length];
-                    const to = accounts[(clientId + 1 + i) % accounts.length];
-                    if (from.account_no === to.account_no) {
-                        detail = 'Transfer übersprungen (gleiche Konten)';
-                        eventMsg = `Client ${clientId}: ${detail}`;
-                        ok = false;
-                    } else {
-                        this._setClient(clientId, {
-                            status: 'running',
-                            action: 'TRANSFER',
-                            detail: `${this._shortIban(from.account_no)} → ${this._shortIban(to.account_no)} · ${this.config.amount}`,
-                            step: i + 1
-                        });
-                        const res = await this._httpJson('POST', '/api/transfer', {
-                            from_account: from.account_no,
-                            to_account: to.account_no,
-                            amount: this.config.amount,
-                            description: `SimClient ${clientId} Tx #${i + 1}`
-                        }, clientId);
-                        ok = !!(res.data && res.data.success);
-                        if (ok) {
-                            this.stats.transfers_ok++;
-                            detail = `Transfer ${this.config.amount} EUR`;
-                            eventMsg = `Client ${clientId}: TRANSFER ${this._shortIban(from.account_no)} → ${this._shortIban(to.account_no)}`;
-                        } else {
-                            this.stats.last_error = res.data?.data?.message || res.data?.error || 'Transfer failed';
-                            detail = this.stats.last_error;
-                            eventMsg = `Client ${clientId}: Transfer fehlgeschlagen — ${detail}`;
-                        }
+                    result = await this._doTransfer(clientId, accounts, step, amount);
+                    // Bei Konflikt/Deckung: Einzahlung nachlegen und Konten refreshen (Betriebsrealismus)
+                    if (!result.ok && !this.stopRequested) {
+                        await this._doDeposit(clientId, accounts, step, Math.max(amount * 5, 1));
+                        accounts = await this._loadAccounts(clientId);
                     }
                 }
 
-                if (ok) {
+                if (result.ok) {
                     this.stats.transactions_ok++;
                     const cur = this.clientStates.get(clientId);
                     this._setClient(clientId, {
                         ok: (cur?.ok || 0) + 1,
-                        detail,
+                        detail: result.detail,
                         action: type,
-                        step: i + 1
+                        step,
+                        round,
+                        total: continuous ? 0 : batchTotal
                     });
-                    this._pushEvent({ level: 'ok', client_id: clientId, action: type, message: eventMsg });
+                    this._pushEvent({ level: 'ok', client_id: clientId, action: type, message: result.eventMsg });
                 } else {
                     this.stats.transactions_failed++;
                     const cur = this.clientStates.get(clientId);
                     this._setClient(clientId, {
                         fail: (cur?.fail || 0) + 1,
-                        detail,
+                        detail: result.detail,
                         action: type,
-                        step: i + 1
+                        step,
+                        round,
+                        total: continuous ? 0 : batchTotal
                     });
-                    this._pushEvent({ level: 'error', client_id: clientId, action: type, message: eventMsg || detail });
+                    this._pushEvent({
+                        level: 'error',
+                        client_id: clientId,
+                        action: type,
+                        message: result.eventMsg || result.detail
+                    });
                 }
 
-                if (this.config.delay_ms > 0 && i < this.config.txs_per_client - 1 && !this.stopRequested) {
+                if (continuous && step % batchTotal === 0) {
+                    this.stats.rounds_completed++;
                     this._setClient(clientId, {
-                        action: 'WAIT',
-                        detail: `Pause ${this.config.delay_ms} ms`
+                        action: 'ROUND',
+                        detail: `Runde ${round} fertig — Loop weiter`,
+                        round
                     });
-                    await new Promise((r) => setTimeout(r, this.config.delay_ms));
+                }
+
+                if (this.config.delay_ms > 0 && !this.stopRequested) {
+                    const moreWork = continuous || step < batchTotal;
+                    if (moreWork) {
+                        this._setClient(clientId, {
+                            action: 'WAIT',
+                            detail: `Pause ${this.config.delay_ms} ms`,
+                            step,
+                            round
+                        });
+                        await new Promise((r) => setTimeout(r, this.config.delay_ms));
+                    }
                 }
             }
 
@@ -361,7 +459,16 @@ class CustomerSimulator {
                     status: 'done',
                     action: 'DONE',
                     detail: 'Client fertig',
-                    step: this.config.txs_per_client
+                    step,
+                    round
+                });
+            } else {
+                this._setClient(clientId, {
+                    status: 'stopped',
+                    action: 'STOP',
+                    detail: 'Abbruch nach Stop-Signal',
+                    step,
+                    round
                 });
             }
         } finally {
@@ -388,12 +495,12 @@ class CustomerSimulator {
             level: 'info',
             client_id: null,
             action: 'ACCOUNTS',
-            message: `${seedAccounts.length} aktive Konten für Simulation geladen`
+            message: `${seedAccounts.length} aktive Konten · echte PostgreSQL-Buchungen (TRANSFER/DEPOSIT)`
         });
 
         const workers = [];
         for (let c = 1; c <= this.config.clients; c++) {
-            workers.push(this._clientLoop(c, seedAccounts));
+            workers.push(this._clientLoop(c));
         }
         await Promise.all(workers);
     }

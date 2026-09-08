@@ -26,7 +26,7 @@
                 </div>
                 <div>
                     <h1 class="brand-title">Kunden<span>Simulator</span></h1>
-                    <p class="brand-subtitle">Parallele Bankkunden · Live-Aktivität · HTTP Loopback</p>
+                    <p class="brand-subtitle">Dauerbetrieb · echte PostgreSQL-Buchungen · parallele Kunden</p>
                 </div>
             </div>
 
@@ -126,40 +126,54 @@
                         <div class="sim-field-hint">Jede Verbindung = Client-ID <code>sim:N</code></div>
                     </div>
 
-                    <div class="sim-field">
+                    <div class="sim-field sim-field-toggle">
+                        <label class="sim-toggle">
+                            <input type="checkbox" id="cfgContinuous" checked>
+                            <span class="sim-toggle-ui"></span>
+                            <span class="sim-toggle-text">
+                                <strong>Dauerbetrieb (Loop)</strong>
+                                <small>Läuft bis Stop · echte DB-Schreibungen</small>
+                            </span>
+                        </label>
+                    </div>
+
+                    <div class="sim-field" id="cfgTxsField">
                         <div class="sim-field-head">
-                            <label for="cfgTxs">Transaktionen pro Kunde</label>
+                            <label for="cfgTxs" id="cfgTxsTitle">Tx pro Runde / Batch</label>
                             <strong id="cfgTxsLabel">10</strong>
                         </div>
                         <input type="range" id="cfgTxs" min="1" max="100" value="10" step="1">
-                        <div class="sim-field-hint">Gesamt: <span id="cfgTotalLabel">250</span> Anfragen</div>
+                        <div class="sim-field-hint" id="cfgTxsHint">Im Loop: Rundenlänge · Batch: Tx je Client · Gesamt: <span id="cfgTotalLabel">250</span></div>
                     </div>
 
                     <div class="sim-field">
                         <div class="sim-field-head">
-                            <label for="cfgDelay">Pause zwischen Buchungen</label>
-                            <strong id="cfgDelayLabel">0 ms</strong>
+                            <label for="cfgDelay">Denkzeit zwischen Buchungen</label>
+                            <strong id="cfgDelayLabel">200 ms</strong>
                         </div>
-                        <input type="range" id="cfgDelay" min="0" max="2000" value="0" step="50">
+                        <input type="range" id="cfgDelay" min="0" max="2000" value="200" step="50">
                     </div>
 
                     <div class="sim-field">
-                        <label for="cfgAmount">Betrag pro Buchung (EUR)</label>
+                        <label for="cfgAmount">Basis-Betrag (EUR)</label>
                         <input type="number" id="cfgAmount" class="form-input" min="0.01" step="0.01" value="0.01">
                     </div>
 
                     <div class="sim-field">
                         <label>Transaktionsmix</label>
                         <div class="sim-mix" id="cfgMix">
-                            <button type="button" class="sim-mix-btn active" data-mix="mixed">Gemischt</button>
+                            <button type="button" class="sim-mix-btn active" data-mix="ops">Betrieb</button>
+                            <button type="button" class="sim-mix-btn" data-mix="mixed">Gemischt</button>
                             <button type="button" class="sim-mix-btn" data-mix="transfer">Überweisungen</button>
                             <button type="button" class="sim-mix-btn" data-mix="deposit">Einzahlungen</button>
                             <button type="button" class="sim-mix-btn" data-mix="read">Abfragen</button>
                         </div>
+                        <div class="sim-field-hint">Betrieb ≈ 55 % Transfer · 35 % Deposit · 15 % Read (schreibt in PostgreSQL)</div>
                     </div>
 
                     <div class="sim-presets">
                         <span class="sim-presets-label">Schnellwahl</span>
+                        <button type="button" class="btn btn-secondary btn-sm" data-preset="production">Produktion</button>
                         <button type="button" class="btn btn-secondary btn-sm" data-preset="light">Leicht</button>
                         <button type="button" class="btn btn-secondary btn-sm" data-preset="medium">Mittel</button>
                         <button type="button" class="btn btn-secondary btn-sm" data-preset="heavy">Stark</button>
@@ -167,7 +181,7 @@
                     </div>
 
                     <div class="sim-actions">
-                        <button type="submit" class="btn btn-primary btn-block" id="btnStart">Simulation starten</button>
+                        <button type="submit" class="btn btn-primary btn-block" id="btnStart">Dauerbetrieb starten</button>
                         <button type="button" class="btn btn-secondary btn-block" id="btnStop" disabled>Stoppen</button>
                     </div>
                 </form>
@@ -192,8 +206,8 @@
                 <div class="sim-breakdown">
                     <div class="sim-break-card"><span>Transfers OK</span><strong id="brkTransfers">0</strong></div>
                     <div class="sim-break-card"><span>Einzahlungen OK</span><strong id="brkDeposits">0</strong></div>
-                    <div class="sim-break-card"><span>Reads OK</span><strong id="brkReads">0</strong></div>
-                    <div class="sim-break-card"><span>Clients fertig</span><strong id="brkFinished">0</strong></div>
+                    <div class="sim-break-card"><span>DB-Writes OK</span><strong id="brkWrites">0</strong></div>
+                    <div class="sim-break-card"><span>Runden / fertig</span><strong id="brkFinished">0</strong></div>
                 </div>
 
                 <div class="sim-activity-head">

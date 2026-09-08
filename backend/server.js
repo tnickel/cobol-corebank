@@ -9,8 +9,10 @@ const PROJECT_ROOT = path.resolve(__dirname, '..');
 const COBOL_EXE = path.join(PROJECT_ROOT, 'bin', 'cobol_bank.exe');
 const FRONTEND_DIR = path.join(PROJECT_ROOT, 'frontend');
 
-/** Parallel COBOL workers — PostgreSQL MVCC + row locks handle contention */
+/** Parallel COBOL workers — PostgreSQL MVCC; COBOL uses atomic balance UPDATEs */
 const TX_CONCURRENCY = Math.max(1, parseInt(process.env.TX_CONCURRENCY || '16', 10));
+const BIND_HOST = process.env.BIND_HOST || '127.0.0.1';
+const MAX_BODY_BYTES = Math.max(1024, parseInt(process.env.MAX_BODY_BYTES || '65536', 10));
 const customerSimulator = new CustomerSimulator(PORT);
 
 const GNUCOBOL_BASE = "C:\\Users\\tnickel\\AppData\\Local\\Programs\\GnuCOBOL 3.2";
@@ -34,8 +36,8 @@ let lastExecutionInfo = {
 
 /**
  * Bounded worker pool for COBOL processes.
- * With PostgreSQL, writes can run truly in parallel; row-level locks
- * (SELECT ... FOR UPDATE) in COBOL keep account balances consistent.
+ * All banking COBOL jobs (reads + writes) go through this pool so
+ * Admin telemetry reflects real parallel load.
  */
 class BankTransactionQueue {
     constructor(concurrency = 16) {
@@ -47,6 +49,8 @@ class BankTransactionQueue {
         this.latencies = [];
         this.maxLatenciesHistory = 200;
         this.peakQueueDepth = 0;
+        this.peakActive = 0;
+        this.recentActiveSamples = [];
     }
 
     get depth() {
@@ -57,10 +61,26 @@ class BankTransactionQueue {
         return this.running;
     }
 
+    /** Max workers seen in the last ~3s — smoother than instantaneous snapshot */
+    get recentActive() {
+        const cutoff = Date.now() - 3000;
+        this.recentActiveSamples = this.recentActiveSamples.filter((s) => s.ts >= cutoff);
+        if (this.recentActiveSamples.length === 0) return this.running;
+        return Math.max(this.running, ...this.recentActiveSamples.map((s) => s.n));
+    }
+
     get avgLatencyMs() {
         if (this.latencies.length === 0) return 0;
         const sum = this.latencies.reduce((a, b) => a + b, 0);
         return Math.round((sum / this.latencies.length) * 10) / 10;
+    }
+
+    _noteActive() {
+        if (this.running > this.peakActive) this.peakActive = this.running;
+        this.recentActiveSamples.push({ ts: Date.now(), n: this.running });
+        if (this.recentActiveSamples.length > 120) {
+            this.recentActiveSamples.splice(0, this.recentActiveSamples.length - 120);
+        }
     }
 
     enqueue(taskFn, meta = {}) {
@@ -79,53 +99,58 @@ class BankTransactionQueue {
         });
     }
 
-    async _processNext() {
-        if (this.running >= this.concurrency || this.queue.length === 0) {
-            return;
+    _processNext() {
+        while (this.running < this.concurrency && this.queue.length > 0) {
+            this._runOne();
         }
+    }
 
+    _runOne() {
         this.running++;
+        this._noteActive();
         const item = this.queue.shift();
         const start = Date.now();
 
-        try {
-            let result = null;
-            let retries = 3;
-            while (retries > 0) {
-                result = await item.taskFn();
-                const isBusy = result && result.data && (
-                    (result.data.status === 'error' && /deadlock|could not serialize|lock timeout|busy/i.test(result.data.message || '')) ||
-                    (result.data.raw && /deadlock|could not serialize|lock timeout|busy/i.test(result.data.raw))
-                );
+        (async () => {
+            try {
+                let result = null;
+                let retries = 3;
+                while (retries > 0) {
+                    result = await item.taskFn();
+                    const isBusy = result && result.data && (
+                        (result.data.status === 'error' && /deadlock|could not serialize|lock timeout|busy/i.test(result.data.message || '')) ||
+                        (result.data.raw && /deadlock|could not serialize|lock timeout|busy/i.test(result.data.raw))
+                    );
 
-                if (isBusy && retries > 1) {
-                    retries--;
-                    await new Promise(r => setTimeout(r, 40 * (4 - retries)));
-                    continue;
+                    if (isBusy && retries > 1) {
+                        retries--;
+                        await new Promise(r => setTimeout(r, 40 * (4 - retries)));
+                        continue;
+                    }
+                    break;
                 }
-                break;
-            }
 
-            const latency = Date.now() - start;
-            this.latencies.push(latency);
-            if (this.latencies.length > this.maxLatenciesHistory) {
-                this.latencies.shift();
-            }
+                const latency = Date.now() - start;
+                this.latencies.push(latency);
+                if (this.latencies.length > this.maxLatenciesHistory) {
+                    this.latencies.shift();
+                }
 
-            if (result && result.success) {
-                this.totalProcessed++;
-            } else {
+                if (result && result.success) {
+                    this.totalProcessed++;
+                } else {
+                    this.totalFailed++;
+                }
+
+                item.resolve(result);
+            } catch (err) {
                 this.totalFailed++;
+                item.reject(err);
+            } finally {
+                this.running--;
+                this._processNext();
             }
-
-            item.resolve(result);
-        } catch (err) {
-            this.totalFailed++;
-            item.reject(err);
-        } finally {
-            this.running--;
-            this._processNext();
-        }
+        })();
     }
 }
 
@@ -204,7 +229,11 @@ const liveMetrics = new LiveMetrics();
 function runCobol(args) {
     return new Promise((resolve) => {
         const start = Date.now();
-        execFile(COBOL_EXE, args, { cwd: PROJECT_ROOT, env: customEnv }, (error, stdout, stderr) => {
+        execFile(COBOL_EXE, args, {
+            cwd: PROJECT_ROOT,
+            env: customEnv,
+            maxBuffer: 16 * 1024 * 1024
+        }, (error, stdout, stderr) => {
             const durationMs = Date.now() - start;
             const cleanStdout = (stdout || '').trim();
             const cleanStderr = (stderr || '').trim();
@@ -247,7 +276,16 @@ function runCobol(args) {
 function readJsonBody(req) {
     return new Promise((resolve, reject) => {
         let body = '';
-        req.on('data', chunk => { body += chunk; });
+        let size = 0;
+        req.on('data', chunk => {
+            size += chunk.length;
+            if (size > MAX_BODY_BYTES) {
+                reject(new Error('Request body too large'));
+                req.destroy();
+                return;
+            }
+            body += chunk;
+        });
         req.on('end', () => {
             try {
                 resolve(body ? JSON.parse(body) : {});
@@ -270,34 +308,44 @@ const MIME_TYPES = {
 };
 
 function serveStatic(req, res, pathname) {
-    let rel = pathname;
-    if (rel === '/simulator' || rel === '/simulator/') {
-        rel = '/simulator/index.html';
-    } else if (rel === '/') {
+    let rel = decodeURIComponent(pathname || '/');
+    if (rel.endsWith('/') || rel === '/simulator') {
+        rel = path.posix.join(rel, 'index.html');
+    }
+    if (rel === '/') {
         rel = '/index.html';
     }
 
     rel = rel.replace(/^\/+/, '').replace(/\//g, path.sep);
-    let filePath = path.join(FRONTEND_DIR, rel);
-    filePath = path.normalize(filePath);
+    const root = path.resolve(FRONTEND_DIR);
+    let filePath = path.resolve(root, rel);
 
-    if (!filePath.startsWith(FRONTEND_DIR)) {
+    if (filePath !== root && !filePath.startsWith(root + path.sep)) {
         res.writeHead(403);
         res.end('Access Denied');
         return;
     }
 
     fs.stat(filePath, (err, stats) => {
-        if (err || !stats.isFile()) {
+        if (!err && stats.isDirectory()) {
+            filePath = path.join(filePath, 'index.html');
+        } else if (err || !stats.isFile()) {
             res.writeHead(404, { 'Content-Type': 'text/plain' });
             res.end('404 Not Found');
             return;
         }
 
-        const ext = path.extname(filePath).toLowerCase();
-        const contentType = MIME_TYPES[ext] || 'application/octet-stream';
-        res.writeHead(200, { 'Content-Type': contentType });
-        fs.createReadStream(filePath).pipe(res);
+        fs.stat(filePath, (err2, stats2) => {
+            if (err2 || !stats2.isFile()) {
+                res.writeHead(404, { 'Content-Type': 'text/plain' });
+                res.end('404 Not Found');
+                return;
+            }
+            const ext = path.extname(filePath).toLowerCase();
+            const contentType = MIME_TYPES[ext] || 'application/octet-stream';
+            res.writeHead(200, { 'Content-Type': contentType });
+            fs.createReadStream(filePath).pipe(res);
+        });
     });
 }
 
@@ -331,14 +379,20 @@ const server = http.createServer(async (req, res) => {
 
         try {
             if (pathname === '/api/accounts' && req.method === 'GET') {
-                const result = await runCobol(['LIST_ACCOUNTS']);
+                const result = await txQueue.enqueue(
+                    () => runCobol(['LIST_ACCOUNTS']),
+                    { type: 'LIST_ACCOUNTS' }
+                );
                 res.writeHead(200);
                 res.end(JSON.stringify(result));
                 return;
             }
 
             if (pathname === '/api/transactions' && req.method === 'GET') {
-                const result = await runCobol(['LIST_TRANSACTIONS']);
+                const result = await txQueue.enqueue(
+                    () => runCobol(['LIST_TRANSACTIONS']),
+                    { type: 'LIST_TRANSACTIONS' }
+                );
                 res.writeHead(200);
                 res.end(JSON.stringify(result));
                 return;
@@ -422,7 +476,10 @@ const server = http.createServer(async (req, res) => {
                 const promises = [];
 
                 if (testType === 'TRANSFER') {
-                    const accRes = await runCobol(['LIST_ACCOUNTS']);
+                    const accRes = await txQueue.enqueue(
+                        () => runCobol(['LIST_ACCOUNTS']),
+                        { type: 'LIST_ACCOUNTS' }
+                    );
                     const accounts = (accRes.data && accRes.data.accounts) || [];
                     if (accounts.length < 2) {
                         res.writeHead(400);
@@ -446,9 +503,11 @@ const server = http.createServer(async (req, res) => {
                 } else {
                     for (let i = 0; i < count; i++) {
                         promises.push(
-                            runCobol(['LIST_ACCOUNTS'])
-                                .then(r => ({ ok: r.success, data: r.data }))
-                                .catch(e => ({ ok: false, error: e.message }))
+                            txQueue.enqueue(
+                                () => runCobol(['LIST_ACCOUNTS']),
+                                { type: 'LIST_ACCOUNTS', stressIndex: i }
+                            ).then(r => ({ ok: r.success, data: r.data }))
+                             .catch(e => ({ ok: false, error: e.message }))
                         );
                     }
                 }
@@ -509,8 +568,10 @@ const server = http.createServer(async (req, res) => {
                     cobol_compiler: 'GnuCOBOL 3.2+ (x86_64-pc-mingw64)',
                     sql_engine: 'GixSQL 1.0.20b with PostgreSQL',
                     journal_mode: 'MVCC',
-                    concurrency_model: `PostgreSQL Parallel Workers (concurrency=${TX_CONCURRENCY}, atomic balance UPDATEs)`,
-                    database: 'postgresql://cobol@127.0.0.1:5432/cobolbank',
+                    concurrency_model: `PostgreSQL Parallel Workers (concurrency=${TX_CONCURRENCY}, atomic balance UPDATEs + sum check)`,
+                    database: 'postgresql://127.0.0.1:5432/cobolbank',
+                    bind_host: BIND_HOST,
+                    auth_note: 'Demo bindet standardmäßig nur localhost — keine Auth-Schicht',
                     database_size_bytes: null,
                     server_time: new Date().toISOString(),
                     live: {
@@ -522,6 +583,8 @@ const server = http.createServer(async (req, res) => {
                     queue: {
                         depth: txQueue.depth,
                         active_workers: txQueue.active,
+                        recent_active_workers: txQueue.recentActive,
+                        peak_active_workers: txQueue.peakActive,
                         concurrency: TX_CONCURRENCY,
                         total_processed: txQueue.totalProcessed,
                         total_failed: txQueue.totalFailed,
@@ -561,10 +624,10 @@ async function bootstrap() {
     }
 }
 
-server.listen(PORT, async () => {
+server.listen(PORT, BIND_HOST, async () => {
     console.log(`=======================================================`);
-    console.log(`  COBOL CoreBank Admin Interface on port ${PORT}`);
-    console.log(`  Access UI at: http://localhost:${PORT}`);
+    console.log(`  COBOL CoreBank Admin Interface on ${BIND_HOST}:${PORT}`);
+    console.log(`  Access UI at: http://${BIND_HOST}:${PORT}`);
     console.log(`  Engine: GnuCOBOL 3.2 + GixSQL + PostgreSQL`);
     console.log(`  Concurrency: ${TX_CONCURRENCY} parallel COBOL workers`);
     console.log(`=======================================================`);

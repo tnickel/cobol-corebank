@@ -21,11 +21,11 @@ Standard-GnuCOBOL-Pfad:
 |---|---|
 | **`startadmin.bat`** | Postgres → Build falls nötig → Backend → Browser **Admin** `/` |
 | **`startsimmulator.bat`** | Postgres → Build falls nötig → Backend → Browser **Simulator** `/simulator/` |
-| `start.bat` | Alias → `startadmin.bat` |
-| `startsimulator.bat` | Alias → `startsimmulator.bat` |
 | **`stop.bat`** | Beendet Prozess auf Port **3000** (Postgres bleibt) |
 
 Doppelstart-Schutz: Lauscht bereits etwas auf Port 3000, wird kein zweites Backend gestartet.
+
+Lokale Artefakte: Ordner [`data/`](../data/README.md) (Legacy-SQLite-Archiv; Live-DB ist PostgreSQL).
 
 PostgreSQL stoppen:
 
@@ -83,7 +83,21 @@ Auth: `cobol.cobol`
 | Variable | Default | Bedeutung |
 |---|---|---|
 | `PORT` | `3000` | HTTP-Port Backend |
+| `BIND_HOST` | `127.0.0.1` | Listen-Adresse (Demo: nur localhost) |
 | `TX_CONCURRENCY` | `16` | Max. parallele COBOL-Schreib-Worker |
+| `MAX_BODY_BYTES` | `65536` | Max. JSON-Body-Größe |
+
+### Tests
+
+Voraussetzung Integration: Backend läuft (`startadmin.bat` oder `npm start`).
+
+```cmd
+npm test                 REM Unit (Mock) + Integration + Admin-Display
+npm run test:unit        REM nur CustomerSimulator gegen Mock-Bank
+npm run test:integration REM Live-Server: Simulator-Writes + system-status KPIs
+```
+
+Die Integration prüft u. a., dass unter Last `queue.active_workers` / `recent_active_workers`, `live.clients_active`, `simulator.stats.write_ok` und das Journal wachsen — also das, was das Admin-UI anzeigt.
 
 Beispiel:
 
@@ -133,3 +147,4 @@ Anschließend Backend starten → `INIT` legt Schema und Demo-Konten neu an.
 | Simulator 409 | Bereits laufende Simulation → Stop oder warten |
 | Viele Transfer-Fehler unter Last | Salden / Kontenknappheit — kleiner Betrag oder Mix mit Deposits |
 | Port 3000 belegt | `stop.bat` oder PID per `netstat` prüfen |
+| Von anderem PC nicht erreichbar | Default `BIND_HOST=127.0.0.1` — nur lokal; bewusst ohne Auth |

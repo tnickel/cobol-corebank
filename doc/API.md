@@ -1,10 +1,11 @@
 # REST-API-Referenz
 
-Basis-URL: `http://localhost:3000`  
+Basis-URL: `http://127.0.0.1:3000` (Default-Bind; siehe `BIND_HOST`)  
 Content-Type Requests: `application/json`  
 Antworten (Banking): meist Wrapper `{ success, exitCode, durationMs, data }` wobei `data` das COBOL-JSON ist.
 
-CORS: `Access-Control-Allow-Origin: *` (GET/POST/OPTIONS).
+CORS: `Access-Control-Allow-Origin: *` (GET/POST/OPTIONS).  
+**Sicherheit (Demo):** keine Authentifizierung — Server lauscht default nur auf localhost. Body-Limit: `MAX_BODY_BYTES`. Details: [CODE_REVIEW.md](CODE_REVIEW.md).
 
 ---
 
@@ -146,21 +147,23 @@ Details des letzten COBOL-CLI-Aufrufs (`command`, `args`, `stdout`, `durationMs`
 
 ```json
 {
-  "clients": 25,
+  "clients": 20,
   "txs_per_client": 10,
-  "delay_ms": 0,
+  "delay_ms": 200,
   "amount": 0.01,
-  "mix": "mixed"
+  "mix": "ops",
+  "continuous": true
 }
 ```
 
 | Feld | Default / Limit |
 |---|---|
 | `clients` | Default 10, Clamp 1–200 |
-| `txs_per_client` | Default 5, Clamp 1–500 |
+| `txs_per_client` | Default 5, Clamp 1–500 (Batch-Ende bzw. Rundenlänge im Loop) |
 | `delay_ms` | Default 0, Clamp 0–10000 |
 | `amount` | Default 0.01, min 0.01 |
-| `mix` | `transfer` \| `deposit` \| `mixed` \| `read` |
+| `mix` | `ops` \| `transfer` \| `deposit` \| `mixed` \| `read` |
+| `continuous` | `true` = Dauerbetrieb bis Stop (`loop` / `mode:"continuous"` ebenfalls) |
 
 **200:** `{ "ok": true, "config": { … } }`  
 **409:** `{ "ok": false, "error": "Simulator läuft bereits" }`

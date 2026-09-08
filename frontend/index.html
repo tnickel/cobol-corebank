@@ -189,8 +189,8 @@
                         </svg>
                     </div>
                 </div>
-                <div class="kpi-value" id="kpiQueueDepth">0 aktiv</div>
-                <div class="kpi-meta"><span id="kpiProcessedCount">0</span> verarbeitet • Peak: <span id="kpiPeakDepth">0</span></div>
+                <div class="kpi-value" id="kpiQueueDepth">0 / 16</div>
+                <div class="kpi-meta"><span id="kpiProcessedCount">0</span> verarbeitet • Peak Worker: <span id="kpiPeakDepth">0</span></div>
             </div>
         </section>
 
@@ -399,8 +399,37 @@
                     </form>
                 </div>
 
-                <!-- CICS Transaction Queue & Concurrency Suite Panel -->
-                <div class="panel queue-panel">
+                <!-- COBOL Execution Inspector -->
+                <div class="panel inspector-panel">
+                    <div class="panel-header">
+                        <div class="panel-title-group">
+                            <svg class="inspector-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="4 17 10 11 4 5"></polyline>
+                                <line x1="12" y1="19" x2="20" y2="19"></line>
+                            </svg>
+                            <h3 class="panel-title">COBOL Core Inspector</h3>
+                            <span class="panel-tag panel-tag-admin">DEBUG</span>
+                        </div>
+                        <span class="code-pill" id="inspectorDuration">0 ms</span>
+                    </div>
+                    <div class="inspector-meta">
+                        <div>Kommando: <span id="inspectorCommand" class="highlight-cmd">INIT</span></div>
+                        <div>Zeitstempel: <span id="inspectorTime">-</span></div>
+                    </div>
+                    <div class="terminal-view">
+                        <div class="terminal-bar">
+                            <span class="terminal-dot red"></span>
+                            <span class="terminal-dot yellow"></span>
+                            <span class="terminal-dot green"></span>
+                            <span class="terminal-title">cobol_bank.exe CLI stdout</span>
+                        </div>
+                        <pre class="terminal-body" id="inspectorStdout">{"status": "ok"}</pre>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- Full-width load / concurrency panel -->
+            <div class="panel queue-panel queue-panel-full">
                     <div class="panel-header">
                         <div class="panel-title-group">
                             <svg class="panel-icon icon-purple" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 18px; height: 18px; margin-right: 6px;">
@@ -442,7 +471,7 @@
                         <div class="q-stat-card">
                             <span class="q-stat-label">Aktive Worker</span>
                             <span class="q-stat-val" id="queueActiveVal">0</span>
-                            <span class="q-stat-sub">Parallel Pool</span>
+                            <span class="q-stat-sub">jetzt / Peak <span id="queuePeakWorkersVal">0</span></span>
                         </div>
                         <div class="q-stat-card">
                             <span class="q-stat-label">Verarbeitet</span>
@@ -480,36 +509,7 @@
                             <!-- Populated by JS -->
                         </div>
                     </div>
-                </div>
-
-                <!-- COBOL Execution Inspector -->
-                <div class="panel inspector-panel">
-                    <div class="panel-header">
-                        <div class="panel-title-group">
-                            <svg class="inspector-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <polyline points="4 17 10 11 4 5"></polyline>
-                                <line x1="12" y1="19" x2="20" y2="19"></line>
-                            </svg>
-                            <h3 class="panel-title">COBOL Core Inspector</h3>
-                            <span class="panel-tag panel-tag-admin">DEBUG</span>
-                        </div>
-                        <span class="code-pill" id="inspectorDuration">0 ms</span>
-                    </div>
-                    <div class="inspector-meta">
-                        <div>Kommando: <span id="inspectorCommand" class="highlight-cmd">INIT</span></div>
-                        <div>Zeitstempel: <span id="inspectorTime">-</span></div>
-                    </div>
-                    <div class="terminal-view">
-                        <div class="terminal-bar">
-                            <span class="terminal-dot red"></span>
-                            <span class="terminal-dot yellow"></span>
-                            <span class="terminal-dot green"></span>
-                            <span class="terminal-title">cobol_bank.exe CLI stdout</span>
-                        </div>
-                        <pre class="terminal-body" id="inspectorStdout">{"status": "ok"}</pre>
-                    </div>
-                </div>
-            </aside>
+            </div>
         </main>
     </div>
 

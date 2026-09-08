@@ -2,206 +2,161 @@
 
 # COBOL CoreBank
 
-### Enterprise Core Banking Demo — Mainframe-Logik trifft modernen Parallelbetrieb
+### Enterprise Core Banking Demo — **echte COBOL-Geschäftslogik** trifft modernen Parallelbetrieb
 
-**GnuCOBOL 3.2** · **GixSQL Embedded SQL** · **PostgreSQL 16** · **Admin UI** · **Kunden-Simulator**
+**GnuCOBOL 3.2** · **GixSQL Embedded SQL** · **PostgreSQL 16** · **Node.js Bridge** · **Admin UI** · **Kunden-Simulator**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-22d3ee.svg)](LICENSE)
-[![GnuCOBOL](https://img.shields.io/badge/GnuCOBOL-3.2-34d399.svg)](https://gnucobol.sourceforge.io/)
+[![GnuCOBOL](https://img.shields.io/badge/Engine-GnuCOBOL%203.2-34d399.svg)](https://gnucobol.sourceforge.io/)
+[![GixSQL](https://img.shields.io/badge/SQL-GixSQL%20Embedded-06b6d4.svg)](https://github.com/mridoni/gixsql)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791.svg)](https://www.postgresql.org/)
+[![Node.js](https://img.shields.io/badge/Bridge-Node.js-339933.svg)](https://nodejs.org/)
 [![Platform](https://img.shields.io/badge/Platform-Windows-0ea5e9.svg)](#schnellstart)
 
-[Dokumentation](doc/README.md) · [Architektur](doc/ARCHITECTURE.md) · [Admin](doc/ADMIN.md) · [Simulator](doc/SIMULATOR.md) · [API](doc/API.md)
+[Live-Doku](doc/README.md) · [Architektur](doc/ARCHITECTURE.md) · [COBOL-Engine](doc/ARCHITECTURE.md#4-cobol-engine-cobol_banksqb) · [Admin](doc/ADMIN.md) · [Simulator](doc/SIMULATOR.md) · [API](doc/API.md)
+
+<br/>
+
+<img src="doc/assets/tech-stack.svg" alt="Tech Stack — COBOL im Zentrum" width="900" />
 
 </div>
 
 ---
 
-## Was ist das?
+## Warum dieses Projekt?
 
-**COBOL CoreBank** ist ein vollständiges **Demo- und Referenzprojekt** für Core Banking:
+Viele Banken betreiben jahrzehntealte **COBOL-Cores**. Dieses Repo zeigt praxisnah:
 
-Die gesamte Geschäftslogik (Konten, Überweisungen, Einzahlungen, Zinslauf) läuft in **echtem COBOL** mit Embedded SQL — wie auf dem Mainframe. Darüber sitzen ein schlankes **Node.js-Backend**, ein professionelles **Admin Interface** mit Live-Lastgrafiken und ein **Kunden-Simulator**, der N parallele Bankkunden gegen die API schickt.
+1. **Geschäftslogik bleibt COBOL** — Konten, Überweisungen, Einzahlungen, Zinslauf, Journal  
+2. **Datenbank ist modern** — PostgreSQL 16 mit MVCC statt Single-Writer-SQLite  
+3. **Betrieb ist beobachtbar** — Admin mit Live-Last, Worker-Pool, Journal; Simulator im Dauerbetrieb  
 
-Ziel: zeigen, dass klassische COBOL-Bankenlogik mit **PostgreSQL-MVCC** und parallelen Workern modern und beobachtbar betrieben werden kann.
+Kein Mock der Banklogik: `cobol_bank.exe` ist kompiliertes **GnuCOBOL** mit **Embedded SQL (GixSQL)**.
+
+---
+
+## Tech Stack (Hervorhebung COBOL)
+
+| Schicht | Technologie | Rolle |
+|---|---|---|
+| **★ Engine** | **GnuCOBOL 3.2** + **GixSQL** | Gesamte Banking-Logik in `src/cobol/cobol_bank.sqb` — `EXEC SQL`, ACID-Transfers, JSON über STDOUT |
+| Datenbank | **PostgreSQL 16** (Docker) | Persistenz, parallele Transaktionen (MVCC) |
+| Bridge | **Node.js** (ohne schweres Framework) | Spawn COBOL-Prozesse, Worker-Pool (`TX_CONCURRENCY`), REST, LiveMetrics, Simulator |
+| UI | Vanilla **HTML / CSS / JS** | Admin Interface + Kunden-Simulator (Canvas-Visualisierungen) |
+| Build / Ops | `gixpp` → `cobc`, Docker Compose, `.bat`-Starter | Windows-Demo-Setup |
+
+### Was COBOL konkret macht
+
+| Paragraph / Action | Bedeutung |
+|---|---|
+| `INIT` | Schema (`accounts`, `transactions`) + Seed-Konten |
+| `LIST_ACCOUNTS` / `LIST_TRANSACTIONS` | Cursor + JSON für Admin/API |
+| `TRANSFER` | Atomare Debit/Credit-Updates + Summenerhaltungsprüfung + Journal |
+| `DEPOSIT` | Gutschrift + Journal |
+| `CALC_INTEREST` | Batch-Verzinsung (`balance = balance + Zins`) |
+| `CREATE_ACCOUNT` | Kontoanlage mit SQLCODE-Prüfung |
+
+Quelle: [`src/cobol/cobol_bank.sqb`](src/cobol/cobol_bank.sqb) → Build → [`bin/cobol_bank.exe`](bin/)
+
+<p align="center">
+  <img src="doc/assets/architecture.svg" alt="Architektur: UI → Node → COBOL → PostgreSQL" width="860" />
+</p>
 
 ```mermaid
 flowchart TB
   subgraph UI["Präsentation"]
-    A["Admin Interface<br/>/:3000"]
-    S["Kunden-Simulator<br/>/simulator/"]
+    A["Admin Interface /"]
+    S["Kunden-Simulator /simulator/"]
   end
-
   subgraph API["Node.js Bridge"]
-    Q["Worker-Pool<br/>TX_CONCURRENCY=16"]
-    M["LiveMetrics<br/>Clients · TCP · TPS"]
-    SIM["CustomerSimulator<br/>HTTP Loopback sim:N"]
+    Q["Worker-Pool TX_CONCURRENCY=16"]
+    M["LiveMetrics"]
+    SIM["CustomerSimulator Dauerbetrieb"]
   end
-
-  subgraph CORE["COBOL Engine"]
-    C["cobol_bank.exe<br/>GnuCOBOL + GixSQL"]
+  subgraph CORE["★ COBOL Engine"]
+    C["cobol_bank.exe<br/>GnuCOBOL + GixSQL EXEC SQL"]
   end
-
   subgraph DB["Datenhaltung"]
-    P[("PostgreSQL 16<br/>MVCC · accounts · transactions")]
+    P[("PostgreSQL 16 MVCC")]
   end
-
-  A -->|REST JSON| Q
-  S -->|simulate API| SIM
-  SIM -->|HTTP X-Sim-Client-Id| Q
+  A --> Q
+  S --> SIM --> Q
   Q -->|CLI + JSON stdout| C
   C -->|Embedded SQL| P
-  M -.->|Telemetrie| A
+  M -.-> A
 ```
 
 ---
 
-## Highlights
+## Screenshots / Konzeptgrafiken
 
-| Bereich | Was du siehst |
+| Admin — Last & Parallelbetrieb | Simulator — Dauerbetrieb |
 |---|---|
-| **COBOL Core** | Atomare Transfers (`balance = balance ± amount`), Deposits, Zinsbatch, JSON über STDOUT |
-| **PostgreSQL** | Echter Parallelbetrieb statt SQLite-FIFO — Docker Compose One-Click |
-| **Admin** | Konten, Audit-Journal, Stress-Test, COBOL Inspector, **Realtime Serverlast-Studio** |
-| **Simulator** | N parallele Kunden, Orbit-Animation, Event-Feed „was gerade passiert“, Client-Karten |
-| **Telemetrie** | Aktive Clients, TCP-Verbindungen, TPS, Queue-Worker, Load Index |
+| <img src="doc/assets/admin-preview.svg" alt="Admin Last-Studio" width="420" /> | <img src="doc/assets/simulator-preview.svg" alt="Simulator Orbit" width="420" /> |
 
-<p align="center">
-  <img src="doc/assets/architecture.svg" alt="COBOL CoreBank Architektur" width="860" />
-</p>
+- **Admin:** Konten, Audit-Journal (live), Worker-Pool, TPS, Stress-Test, COBOL Inspector  
+- **Simulator:** Dauerbetrieb (Loop), Mix **Betrieb** (~55 % Transfer / 35 % Deposit), echte PostgreSQL-Writes  
 
 ---
 
 ## Schnellstart
 
-**Voraussetzung:** [Docker Desktop](https://www.docker.com/products/docker-desktop/) (PostgreSQL) · Node.js · GnuCOBOL 3.2 inkl. GixSQL/PostgreSQL-Treiber (Windows).
+**Voraussetzung:** [Docker Desktop](https://www.docker.com/products/docker-desktop/) · [Node.js](https://nodejs.org/) · **GnuCOBOL 3.2** inkl. GixSQL + PostgreSQL-Treiber (Windows).
 
-| Aktion | Befehl | Öffnet |
+| Aktion | Befehl | URL |
 |---|---|---|
-| **Admin Interface** | `startadmin.bat` | http://localhost:3000/ |
-| **Kunden-Simulator** | `startsimmulator.bat` | http://localhost:3000/simulator/ |
+| **Admin** | `startadmin.bat` | http://127.0.0.1:3000/ |
+| **Simulator** | `startsimmulator.bat` | http://127.0.0.1:3000/simulator/ |
 | **Stop Backend** | `stop.bat` | — |
 
 ```text
 startadmin.bat
   ├─ Docker: PostgreSQL 16 (cobol / cobol / cobolbank @ :5432)
-  ├─ Build cobol_bank.exe falls nötig (gixpp + cobc)
-  ├─ node backend/server.js  (INIT-Schema)
+  ├─ gixpp + cobc → bin/cobol_bank.exe   ← COBOL-Build
+  ├─ node backend/server.js  (COBOL INIT)
   └─ Browser → Admin UI
 ```
 
-> `start.bat` = Alias auf Admin · `startsimulator.bat` = Alias auf Simulator
-
-PostgreSQL später stoppen: `docker compose down`
+> Starter: `startadmin.bat` · `startsimmulator.bat` · `stop.bat`  
+> Postgres stoppen: `docker compose down`
 
 ---
 
-## Demo-Szenario (5 Minuten)
+## Demo in 5 Minuten
+
+1. `startadmin.bat` — Demokonten & KPIs  
+2. `startsimmulator.bat` — Preset **Produktion** (Dauerbetrieb, Mix Betrieb)  
+3. Im Admin: Worker-Pool, TPS, Journal zählen hoch  
+4. Im Simulator: Orbit + Event-Feed mit echten `TRANSFER` / `DEPOSIT`  
 
 ```mermaid
 sequenceDiagram
   participant You as Du
-  participant Admin as Admin UI
   participant Sim as Simulator
-  participant API as Node + COBOL
+  participant Node as Node Worker-Pool
+  participant Cobol as cobol_bank.exe
   participant PG as PostgreSQL
-
-  You->>Admin: startadmin.bat
-  Admin->>API: LIST_ACCOUNTS / Telemetrie
-  API->>PG: SELECT …
-  You->>Sim: startsimmulator.bat
-  You->>Sim: 25 Clients × 10 Tx · Mix
-  Sim->>API: N× TRANSFER / DEPOSIT / READ
-  API->>PG: parallele UPDATEs
-  Note over Admin: Charts: Clients · TPS · Load steigen
-  Note over Sim: Orbit + Event-Feed zeigt jede Buchung
+  You->>Sim: Dauerbetrieb starten
+  Sim->>Node: HTTP TRANSFER/DEPOSIT
+  Node->>Cobol: execFile TRANSFER …
+  Cobol->>PG: EXEC SQL UPDATE/INSERT
+  Note over You: Admin zeigt Workers · TPS · Journal
 ```
 
-1. Admin starten — Demokonten und KPIs prüfen  
-2. Simulator öffnen — Preset **Mittel** oder **Stark**  
-3. Im Admin das **Serverlast-Studio** beobachten (Charts/Gauges)  
-4. Im Simulator den **Live-Feed** und die Client-Karten verfolgen  
-
 ---
 
-## Architektur im Überblick
-
-```mermaid
-flowchart LR
-  subgraph Clients
-    B1[Browser Admin]
-    B2[Browser Simulator]
-    SN[sim:1 … sim:N]
-  end
-
-  B1 --> H[HTTP :3000]
-  B2 --> H
-  SN --> H
-
-  H --> W[Write Queue]
-  H --> R[Parallel Reads]
-
-  W --> X[cobol_bank.exe]
-  R --> X
-  X --> PG[(PostgreSQL)]
-```
-
-| Schicht | Technologie | Verantwortung |
-|---|---|---|
-| UI | Vanilla HTML/CSS/JS | Admin + Simulator, Canvas-Visualisierungen |
-| API | Node.js (ohne schwere Frameworks) | Spawn COBOL, Queue, Metrics, Simulate |
-| Engine | GnuCOBOL + GixSQL | Banking-Paragraphs, ACID-SQL |
-| DB | PostgreSQL 16 Alpine | MVCC, Persistenz |
-
-Details: **[doc/ARCHITECTURE.md](doc/ARCHITECTURE.md)**
-
----
-
-## Admin Interface
-
-![Admin Konzept](doc/assets/admin-preview.svg)
-
-- Kontenverwaltung & Buchungsjournal (Audit)
-- Überweisung / Einzahlung / Zinslauf
-- Live: Clients · Verbindungen · TPS
-- **Serverlast-Studio:** Multi-Series-Chart, Gauges, Partikel, Load Index
-- COBOL Core Inspector (letztes CLI + stdout)
-- Link zum Simulator
-
-→ [doc/ADMIN.md](doc/ADMIN.md)
-
----
-
-## Kunden-Simulator
-
-![Simulator Konzept](doc/assets/simulator-preview.svg)
-
-- Einstellbare **N parallele Kunden** und Tx/Kunde
-- Mix: Gemischt / Transfer / Deposit / Read
-- Echte HTTP-Loopback-Requests mit `X-Sim-Client-Id`
-- Orbit-Animation, TPS-Sparkline, Event-Feed, Client-Grid
+## COBOL CLI (ohne UI)
 
 ```cmd
-startsimmulator.bat
+powershell -ExecutionPolicy Bypass -File .\scripts\build_cobol.ps1
+.\bin\cobol_bank.exe INIT
+.\bin\cobol_bank.exe LIST_ACCOUNTS
+.\bin\cobol_bank.exe TRANSFER DE89370400440532013000 DE89370400440532013001 10.00 "Demo"
+.\bin\cobol_bank.exe DEPOSIT DE89370400440532013000 50.00 "Cash"
+.\bin\cobol_bank.exe CALC_INTEREST
 ```
 
-→ [doc/SIMULATOR.md](doc/SIMULATOR.md)
-
----
-
-## COBOL CLI (direkt)
-
-Nach Build (`scripts/build_cobol.ps1`):
-
-| Action | Beispiel |
-|---|---|
-| Init | `.\bin\cobol_bank.exe INIT` |
-| Konten | `.\bin\cobol_bank.exe LIST_ACCOUNTS` |
-| Transfer | `.\bin\cobol_bank.exe TRANSFER <IBAN_FROM> <IBAN_TO> 10.00 "Demo"` |
-| Deposit | `.\bin\cobol_bank.exe DEPOSIT <IBAN> 50.00 "Cash"` |
-| Zinsen | `.\bin\cobol_bank.exe CALC_INTEREST` |
-
-DSN: `pgsql://127.0.0.1:5432/cobolbank?native_cursors=off` · Auth: `cobol.cobol`
+DSN: `pgsql://127.0.0.1:5432/cobolbank?native_cursors=off` · User/Pass: `cobol` / `cobol`
 
 ---
 
@@ -209,15 +164,25 @@ DSN: `pgsql://127.0.0.1:5432/cobolbank?native_cursors=off` · Auth: `cobol.cobol
 
 | Methode | Pfad | Zweck |
 |---|---|---|
-| GET | `/api/accounts` | Konten + Liquidität |
-| GET | `/api/transactions` | Journal |
-| POST | `/api/transfer` | Überweisung |
-| POST | `/api/deposit` | Einzahlung |
-| POST | `/api/simulate/start` | Simulator starten |
-| GET | `/api/simulate/status` | Stats + Clients + Events |
-| GET | `/api/system-status` | Queue + LiveMetrics |
+| GET | `/api/accounts` | Konten (via COBOL) |
+| GET | `/api/transactions` | Journal (`total_transactions` + letzte 200) |
+| POST | `/api/transfer` / `/api/deposit` | Schreibende COBOL-Jobs |
+| POST | `/api/simulate/start` | Batch oder `continuous: true` |
+| GET | `/api/system-status` | Queue, LiveMetrics, Simulator |
 
-Vollständig: **[doc/API.md](doc/API.md)** · Betrieb: **[doc/OPERATIONS.md](doc/OPERATIONS.md)**
+Vollständig: **[doc/API.md](doc/API.md)**
+
+---
+
+## Tests
+
+```cmd
+npm test                 # Unit (Mock) + Integration (Server muss laufen)
+npm run test:unit
+npm run test:integration
+```
+
+Prüft u. a. Dauerbetrieb-Writes und dass `system-status` Worker/Clients/TPS fürs Admin-UI liefert.
 
 ---
 
@@ -225,18 +190,16 @@ Vollständig: **[doc/API.md](doc/API.md)** · Betrieb: **[doc/OPERATIONS.md](doc
 
 ```text
 cobol-corebank/
-├── startadmin.bat / startsimmulator.bat / stop.bat
-├── docker-compose.yml          # PostgreSQL 16
-├── backend/
-│   ├── server.js               # API, Queue, Metrics
-│   └── simulator.js            # N parallele Kunden
-├── frontend/
-│   ├── index.html              # Admin
-│   ├── js/load-viz.js          # Last-Charts
-│   └── simulator/              # Simulator UI + Viz
-├── src/cobol/cobol_bank.sqb    # COBOL + EXEC SQL
-├── scripts/build_cobol.ps1
-└── doc/                        # Vollständige Dokumentation
+├── src/cobol/cobol_bank.sqb     ★ COBOL + EXEC SQL (Herzstück)
+├── scripts/build_cobol.ps1      # gixpp + cobc
+├── bin/cobol_bank.exe           # gebaute Engine
+├── backend/server.js            # API, Worker-Pool, Metrics
+├── backend/simulator.js         # Dauerbetrieb / Batch
+├── frontend/                    # Admin + Simulator
+├── tests/                       # node:test Suite
+├── docker-compose.yml           # PostgreSQL 16
+├── doc/                         # Architektur, Ops, API, …
+└── startadmin.bat / startsimmulator.bat / stop.bat
 ```
 
 ---
@@ -246,23 +209,33 @@ cobol-corebank/
 | Dokument | Inhalt |
 |---|---|
 | [doc/README.md](doc/README.md) | Inhaltsverzeichnis |
-| [doc/ARCHITECTURE.md](doc/ARCHITECTURE.md) | Schichten, COBOL, Schema, Concurrency |
+| [doc/ARCHITECTURE.md](doc/ARCHITECTURE.md) | Schichten, **COBOL-Engine**, Schema, Concurrency |
 | [doc/ADMIN.md](doc/ADMIN.md) | Admin UI & Telemetrie |
-| [doc/SIMULATOR.md](doc/SIMULATOR.md) | Simulator & Live-Feed |
+| [doc/SIMULATOR.md](doc/SIMULATOR.md) | Dauerbetrieb, Mix Betrieb, Live-Feed |
 | [doc/API.md](doc/API.md) | REST-Referenz |
-| [doc/OPERATIONS.md](doc/OPERATIONS.md) | Start, Build, Troubleshooting |
+| [doc/OPERATIONS.md](doc/OPERATIONS.md) | Start, Build, Tests, Troubleshooting |
+| [doc/CODE_REVIEW.md](doc/CODE_REVIEW.md) | Review-Findings |
+
+### Grafiken im Repo
+
+| Datei | Motiv |
+|---|---|
+| [doc/assets/tech-stack.svg](doc/assets/tech-stack.svg) | Tech Stack — COBOL hervorgehoben |
+| [doc/assets/architecture.svg](doc/assets/architecture.svg) | End-to-End-Architektur |
+| [doc/assets/admin-preview.svg](doc/assets/admin-preview.svg) | Admin Last-Studio |
+| [doc/assets/simulator-preview.svg](doc/assets/simulator-preview.svg) | Simulator Aktivitätsraum |
 
 ---
 
-## Hinweise für Entwickler / KI
+## Hinweise (GixSQL / Demo)
 
-- GixSQL: **`native_cursors=off`**, keine Bindestriche in SQL-Hostvariablen, kein `FOR UPDATE` (Precompiler-Bug)
-- Timestamps: `CAST(created_at AS VARCHAR(25))` statt `TO_CHAR(…:MI…)`
-- Parallelität: `TX_CONCURRENCY` (Default 16)
-- Demo-Credentials nur für lokale Entwicklung (`cobol`/`cobol`)
+- DSN: **`native_cursors=off`** · kein `FOR UPDATE` (Precompiler) · Timestamps via `CAST(… AS VARCHAR(25))`  
+- Parallelität: `TX_CONCURRENCY` (Default **16** parallele COBOL-Prozesse)  
+- Demo bindet default auf `127.0.0.1` (keine Auth)  
+- Transfer-Konflikte unter Last sind erwartbar (Summenerhalt / parallele Debits)
 
 ---
 
 ## Lizenz
 
-MIT — siehe Projektroot. Demo-Projekt zu Lern- und Demonstrationszwecken.
+MIT — Demo- und Lernprojekt. Siehe [LICENSE](LICENSE).

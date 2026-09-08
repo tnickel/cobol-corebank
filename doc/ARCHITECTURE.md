@@ -52,8 +52,6 @@ Domäne: Giro-/Spar-/Geschäftskonten, Überweisungen, Bareinzahlungen, Zinslauf
 cobol/
 ├── startadmin.bat                 # Postgres + Backend + Admin UI
 ├── startsimmulator.bat            # Postgres + Backend + Simulator UI
-├── startsimulator.bat             # Alias → startsimmulator.bat
-├── start.bat                      # Alias → startadmin.bat
 ├── stop.bat                       # Node auf Port 3000 beenden
 ├── docker-compose.yml             # postgres:16-alpine
 ├── package.json
@@ -120,7 +118,7 @@ cobol/
 2. Keine SQL-Keywords als Variablen (`DESC` → `TXNOTE`).
 3. `TRIM(:HOSTVAR)` in WHERE-Klauseln (COBOL space-padded).
 4. **`native_cursors=off`** in der DSN — sonst leere Cursor-Ergebnisse unter PostgreSQL.
-5. **`FOR UPDATE` nicht verwenden** — GixSQL erzeugt ungültiges SQL (`… TRIM($1) UPDATE`). Stattdessen: `UPDATE … SET balance = balance ± :amt [AND balance >= :amt]`.
+5. **`FOR UPDATE` nicht verwenden** — GixSQL erzeugt ungültiges SQL. Stattdessen: `UPDATE … SET balance = balance ± :amt` und bei Transfers **Summenerhaltungsprüfung** der beiden Konten (erkennt 0-Row-Debits).
 6. Timestamps: `CAST(created_at AS VARCHAR(25))` (kein `TO_CHAR` mit `HH24:MI` — `:MI` wird als Host-Variable gelesen).
 7. JSON nur über `DISPLAY … NO ADVANCING`.
 
@@ -129,10 +127,10 @@ cobol/
 - `MAIN-LOGIC` — Connect, `EVALUATE` Action, Disconnect
 - `DO-INIT-DB` — `SERIAL`-Tabellen, Seed
 - `DO-LIST-ACCOUNTS` / `DO-LIST-TRANSACTIONS` — Cursor + JSON
-- `DO-CREATE-ACCOUNT` — Unique-Check, Insert, optional Ersteinlage
-- `DO-TRANSFER` — `BEGIN WORK`, Validierung, atomare Debit/Credit-Updates, `COMMIT`/`ROLLBACK`
+- `DO-CREATE-ACCOUNT` — Unique-Check, Insert mit SQLCODE-Prüfung, optional Ersteinlage
+- `DO-TRANSFER` — atomare Debit/Credit-Updates, Conservation-Check, Journal, `COMMIT`/`ROLLBACK`
 - `DO-DEPOSIT` — Gutschrift + Journal
-- `DO-CALC-INTEREST` — Batch über verzinste Konten
+- `DO-CALC-INTEREST` — `balance = balance + :CALCINT` (kein absolutes Überschreiben)
 
 ---
 

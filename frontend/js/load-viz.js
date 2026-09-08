@@ -165,7 +165,7 @@
         ctx.fillText('TPS scale', pad.l, h - 8 * dpr);
     }
 
-    function drawGauge(canvas, value, max, color, unitLess) {
+    function drawGauge(canvas, value, max, color, asInt) {
         const { w, h, dpr } = resizeCanvas(canvas, 120);
         const ctx = canvas.getContext('2d');
         ctx.clearRect(0, 0, w, h);
@@ -199,12 +199,12 @@
         ctx.font = `600 ${18 * dpr}px Outfit, sans-serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        const label = unitLess ? String(Math.round(value)) : value.toFixed(1);
+        const label = asInt ? String(Math.round(value)) : value.toFixed(1);
         ctx.fillText(label, cx, cy - 2 * dpr);
 
         ctx.fillStyle = COLORS.text;
         ctx.font = `${9 * dpr}px JetBrains Mono, monospace`;
-        ctx.fillText(unitLess ? '/ 100' : ` / ${max}`, cx, cy + 16 * dpr);
+        ctx.fillText(` / ${Math.round(max)}`, cx, cy + 16 * dpr);
     }
 
     function ensureParticles(count) {

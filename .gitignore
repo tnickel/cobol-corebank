@@ -4,9 +4,10 @@ node_modules/
 .env.*
 !.env.example
 
-# SQLite leftovers (legacy)
-bank.db
-bank.db-*
+# Local data (legacy SQLite archive under data/)
+data/*.db
+data/*.db-*
+data/bank.db*
 
 # Build / runtime artifacts
 bin/*.exe
