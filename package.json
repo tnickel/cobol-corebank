@@ -1,0 +1,15 @@
+{
+  "name": "cobol-bank-core",
+  "version": "2.0.0",
+  "description": "COBOL Banking Core System with PostgreSQL & Modern Web Dashboard",
+  "main": "backend/server.js",
+  "scripts": {
+    "start": "node backend/server.js",
+    "build:cobol": "powershell -ExecutionPolicy Bypass -File ./scripts/build_cobol.ps1",
+    "db:up": "powershell -ExecutionPolicy Bypass -File ./scripts/start_postgres.ps1",
+    "db:down": "docker compose down"
+  },
+  "keywords": ["cobol", "gnucobol", "postgresql", "banking", "gixsql"],
+  "author": "Antigravity & Pair Developer",
+  "license": "MIT"
+}

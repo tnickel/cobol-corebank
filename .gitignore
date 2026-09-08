@@ -1,0 +1,33 @@
+# Dependencies / env
+node_modules/
+.env
+.env.*
+!.env.example
+
+# SQLite leftovers (legacy)
+bank.db
+bank.db-*
+
+# Build / runtime artifacts
+bin/*.exe
+bin/*.cob
+bin/cobol_bank.cbl
+*.exe
+gixsql.log
+*.o
+*.so
+*.dll
+
+# OS / IDE
+Thumbs.db
+Desktop.ini
+.DS_Store
+*.swp
+.idea/
+.vscode/*
+!.vscode/tasks.json
+
+# Logs / temp
+*.log
+tmp/
+temp/

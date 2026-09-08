@@ -1,0 +1,752 @@
+       IDENTIFICATION DIVISION.
+       PROGRAM-ID. COBOLBANK.
+       ENVIRONMENT DIVISION.
+       CONFIGURATION SECTION.
+       DATA DIVISION.
+       WORKING-STORAGE SECTION.
+           EXEC SQL INCLUDE SQLCA END-EXEC.
+
+       EXEC SQL BEGIN DECLARE SECTION END-EXEC.
+       01  DBSRC                PIC X(100).
+       01  DBAUTH               PIC X(40).
+
+      * Host variables for ACCOUNTS (no hyphens for SQL compatibility)
+       01  ACCID                PIC 9(9).
+       01  ACCNO                PIC X(34).
+       01  ACCHOLDER            PIC X(60).
+       01  ACCTYPE              PIC X(20).
+       01  ACCBAL               PIC S9(9)V99.
+       01  ACCCURR              PIC X(5).
+       01  ACCINT               PIC S9(3)V99.
+       01  ACCSTAT              PIC X(15).
+       01  ACCCREATED           PIC X(25).
+
+      * Host variables for TRANSACTIONS
+       01  TXID                 PIC 9(9).
+       01  TXFROM               PIC X(34).
+       01  TXTO                 PIC X(34).
+       01  TXAMT                PIC S9(9)V99.
+       01  TXTYPE               PIC X(20).
+       01  TXNOTE               PIC X(100).
+       01  TXCREATED            PIC X(25).
+       01  TXSTAT               PIC X(15).
+
+      * Query variables
+       01  SQLCOUNT             PIC 9(9).
+       01  SQLSUM               PIC S9(11)V99.
+       01  FROMBAL              PIC S9(9)V99.
+       01  TOBAL                PIC S9(9)V99.
+       01  XFERAMT              PIC S9(9)V99.
+       01  NEWBAL               PIC S9(9)V99.
+       01  CALCINT              PIC S9(9)V99.
+       01  ACCEXISTS            PIC 9(5) VALUE 0.
+
+      * Loop & status controls
+       01  WSEOF                PIC X VALUE 'N'.
+       01  WSFIRSTROW           PIC X VALUE 'Y'.
+       01  TOTALINT             PIC S9(9)V99 VALUE 0.
+       01  INTACCS              PIC 9(5) VALUE 0.
+
+      * Command Line Arguments
+       01  ARGACTION            PIC X(30) VALUE SPACES.
+       01  ARG1                 PIC X(100) VALUE SPACES.
+       01  ARG2                 PIC X(100) VALUE SPACES.
+       01  ARG3                 PIC X(100) VALUE SPACES.
+       01  ARG4                 PIC X(100) VALUE SPACES.
+       01  ARG5                 PIC X(100) VALUE SPACES.
+       EXEC SQL END DECLARE SECTION END-EXEC.
+
+      * Formatted Display Fields for JSON
+       01  WS-NUM-INT           PIC Z(8)9.
+       01  WS-NUM-DEC           PIC -(8)9.99.
+       01  WS-NUM-RATE          PIC Z(2)9.99.
+       01  WS-NUM-SUM           PIC -(10)9.99.
+
+       PROCEDURE DIVISION.
+       MAIN-LOGIC.
+           DISPLAY 1 UPON ARGUMENT-NUMBER.
+           ACCEPT ARGACTION FROM ARGUMENT-VALUE.
+
+           IF ARGACTION = SPACES
+               MOVE "HELP" TO ARGACTION
+           END-IF.
+
+      * GixSQL PostgreSQL DSN (libgixsql-pgsql.dll + libpq.dll)
+      * native_cursors=off is required for reliable FETCH on PG
+           MOVE "pgsql://127.0.0.1:5432/cobolbank?native_cursors=off"
+             TO DBSRC
+           MOVE "cobol.cobol" TO DBAUTH
+
+           EXEC SQL
+               CONNECT TO :DBSRC USER :DBAUTH
+           END-EXEC.
+
+           IF SQLCODE NOT = 0
+               DISPLAY '{"status":"error",' NO ADVANCING
+               DISPLAY '"message":"DB connect failed",' NO ADVANCING
+               DISPLAY '"sqlcode":' NO ADVANCING
+               DISPLAY SQLCODE NO ADVANCING
+               DISPLAY '}'
+               MOVE 1 TO RETURN-CODE
+               STOP RUN
+           END-IF.
+
+           EVALUATE FUNCTION UPPER-CASE(FUNCTION TRIM(ARGACTION))
+               WHEN "INIT"
+                   PERFORM DO-INIT-DB
+               WHEN "LIST_ACCOUNTS"
+                   PERFORM DO-LIST-ACCOUNTS
+               WHEN "LIST_TRANSACTIONS"
+                   PERFORM DO-LIST-TRANSACTIONS
+               WHEN "CREATE_ACCOUNT"
+                   PERFORM DO-CREATE-ACCOUNT
+               WHEN "TRANSFER"
+                   PERFORM DO-TRANSFER
+               WHEN "DEPOSIT"
+                   PERFORM DO-DEPOSIT
+               WHEN "CALC_INTEREST"
+                   PERFORM DO-CALC-INTEREST
+               WHEN OTHER
+                   DISPLAY '{"status":"error",' NO ADVANCING
+                   DISPLAY '"message":"Unknown action: ' NO ADVANCING
+                   DISPLAY FUNCTION TRIM(ARGACTION) NO ADVANCING
+                   DISPLAY '"}'
+                   MOVE 1 TO RETURN-CODE
+           END-EVALUATE.
+
+           EXEC SQL DISCONNECT CURRENT END-EXEC.
+           STOP RUN RETURNING 0.
+
+      *================================================================*
+      * 1. INIT-DB: Create tables and seed data if empty               *
+      *================================================================*
+       DO-INIT-DB.
+           EXEC SQL
+               CREATE TABLE IF NOT EXISTS accounts (
+                   id SERIAL PRIMARY KEY,
+                   account_no VARCHAR(34) UNIQUE NOT NULL,
+                   holder_name VARCHAR(60) NOT NULL,
+                   account_type VARCHAR(20) NOT NULL,
+                   balance NUMERIC(12,2) NOT NULL DEFAULT 0,
+                   currency VARCHAR(5) DEFAULT 'EUR',
+                   interest_rate NUMERIC(5,2) DEFAULT 0.0,
+                   status VARCHAR(15) DEFAULT 'ACTIVE',
+                   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+               )
+           END-EXEC.
+
+           EXEC SQL
+               CREATE TABLE IF NOT EXISTS transactions (
+                   id SERIAL PRIMARY KEY,
+                   from_account VARCHAR(34) NOT NULL,
+                   to_account VARCHAR(34) NOT NULL,
+                   amount NUMERIC(12,2) NOT NULL,
+                   tx_type VARCHAR(20) NOT NULL,
+                   description VARCHAR(100),
+                   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                   status VARCHAR(15) DEFAULT 'SUCCESS'
+               )
+           END-EXEC.
+           EXEC SQL COMMIT WORK END-EXEC.
+
+           EXEC SQL
+               SELECT COUNT(*) INTO :SQLCOUNT FROM accounts
+           END-EXEC.
+
+           IF SQLCOUNT = 0
+               EXEC SQL
+                   INSERT INTO accounts
+                   (account_no, holder_name, account_type, balance,
+                    currency, interest_rate, status)
+                   VALUES
+                   ('DE89370400440532013000', 'Max Mustermann',
+                    'GIRO', 4250.50, 'EUR', 0.0, 'ACTIVE')
+               END-EXEC
+               EXEC SQL
+                   INSERT INTO accounts
+                   (account_no, holder_name, account_type, balance,
+                    currency, interest_rate, status)
+                   VALUES
+                   ('DE89370400440532013001', 'Erika Mustermann',
+                    'SPARKONTO', 12500.00, 'EUR', 2.50, 'ACTIVE')
+               END-EXEC
+               EXEC SQL
+                   INSERT INTO accounts
+                   (account_no, holder_name, account_type, balance,
+                    currency, interest_rate, status)
+                   VALUES
+                   ('DE89370400440532013002', 'TechCraft GmbH',
+                    'BUSINESS', 48200.75, 'EUR', 1.25, 'ACTIVE')
+               END-EXEC
+               EXEC SQL
+                   INSERT INTO accounts
+                   (account_no, holder_name, account_type, balance,
+                    currency, interest_rate, status)
+                   VALUES
+                   ('DE89370400440532013003', 'Felix Mustermann',
+                    'SPARKONTO', 1850.25, 'EUR', 3.00, 'ACTIVE')
+               END-EXEC
+
+               EXEC SQL
+                   INSERT INTO transactions
+                   (from_account, to_account, amount, tx_type,
+                    description, status)
+                   VALUES
+                   ('SYSTEM_INIT', 'DE89370400440532013000',
+                    4250.50, 'DEPOSIT', 'Ersteinlage Giro', 'SUCCESS')
+               END-EXEC
+               EXEC SQL
+                   INSERT INTO transactions
+                   (from_account, to_account, amount, tx_type,
+                    description, status)
+                   VALUES
+                   ('SYSTEM_INIT', 'DE89370400440532013001',
+                    12500.00, 'DEPOSIT', 'Festgeld-Start', 'SUCCESS')
+               END-EXEC
+               EXEC SQL
+                   INSERT INTO transactions
+                   (from_account, to_account, amount, tx_type,
+                    description, status)
+                   VALUES
+                   ('SYSTEM_INIT', 'DE89370400440532013002',
+                    48200.75, 'DEPOSIT', 'Stammkapital', 'SUCCESS')
+               END-EXEC
+               EXEC SQL
+                   INSERT INTO transactions
+                   (from_account, to_account, amount, tx_type,
+                    description, status)
+                   VALUES
+                   ('SYSTEM_INIT', 'DE89370400440532013003',
+                    1850.25, 'DEPOSIT', 'Startguthaben', 'SUCCESS')
+               END-EXEC
+               EXEC SQL COMMIT END-EXEC
+               DISPLAY '{"status":"ok",' NO ADVANCING
+               DISPLAY '"message":"DB initialized ' NO ADVANCING
+               DISPLAY 'with 4 accounts"}'
+           ELSE
+               DISPLAY '{"status":"ok",' NO ADVANCING
+               DISPLAY '"message":"Database already initialized"}'
+           END-IF.
+
+      *================================================================*
+      * 2. LIST-ACCOUNTS: Output JSON array of accounts + totals       *
+      *================================================================*
+       DO-LIST-ACCOUNTS.
+           EXEC SQL
+               SELECT COUNT(*), COALESCE(SUM(balance), 0)
+               INTO :SQLCOUNT, :SQLSUM
+               FROM accounts
+           END-EXEC.
+
+           MOVE SQLCOUNT TO WS-NUM-INT.
+           MOVE SQLSUM TO WS-NUM-SUM.
+
+           DISPLAY '{"status":"ok",' NO ADVANCING
+           DISPLAY '"total_accounts":' NO ADVANCING
+           DISPLAY FUNCTION TRIM(WS-NUM-INT) NO ADVANCING
+           DISPLAY ',"total_liquidity":' NO ADVANCING
+           DISPLAY FUNCTION TRIM(WS-NUM-SUM) NO ADVANCING
+           DISPLAY ',"accounts":[' NO ADVANCING.
+
+           MOVE 'N' TO WSEOF.
+           MOVE 'Y' TO WSFIRSTROW.
+
+           EXEC SQL
+               DECLARE c_acc CURSOR FOR
+               SELECT id, account_no, holder_name, account_type,
+                      balance, currency, interest_rate, status,
+                      CAST(created_at AS VARCHAR(25))
+               FROM accounts
+               ORDER BY id ASC
+           END-EXEC.
+
+           EXEC SQL OPEN c_acc END-EXEC.
+
+           PERFORM UNTIL WSEOF = 'Y'
+               EXEC SQL
+                   FETCH c_acc INTO
+                       :ACCID, :ACCNO, :ACCHOLDER,
+                       :ACCTYPE, :ACCBAL, :ACCCURR,
+                       :ACCINT, :ACCSTAT, :ACCCREATED
+               END-EXEC
+               IF SQLCODE = 0
+                   IF WSFIRSTROW = 'N'
+                       DISPLAY ',' NO ADVANCING
+                   END-IF
+                   MOVE 'N' TO WSFIRSTROW
+                   MOVE ACCID TO WS-NUM-INT
+                   MOVE ACCBAL TO WS-NUM-DEC
+                   MOVE ACCINT TO WS-NUM-RATE
+                   DISPLAY '{"id":' NO ADVANCING
+                   DISPLAY FUNCTION TRIM(WS-NUM-INT) NO ADVANCING
+                   DISPLAY ',"account_no":"' NO ADVANCING
+                   DISPLAY FUNCTION TRIM(ACCNO) NO ADVANCING
+                   DISPLAY '","holder_name":"' NO ADVANCING
+                   DISPLAY FUNCTION TRIM(ACCHOLDER) NO ADVANCING
+                   DISPLAY '","account_type":"' NO ADVANCING
+                   DISPLAY FUNCTION TRIM(ACCTYPE) NO ADVANCING
+                   DISPLAY '","balance":' NO ADVANCING
+                   DISPLAY FUNCTION TRIM(WS-NUM-DEC) NO ADVANCING
+                   DISPLAY ',"currency":"' NO ADVANCING
+                   DISPLAY FUNCTION TRIM(ACCCURR) NO ADVANCING
+                   DISPLAY '","interest_rate":' NO ADVANCING
+                   DISPLAY FUNCTION TRIM(WS-NUM-RATE) NO ADVANCING
+                   DISPLAY ',"status":"' NO ADVANCING
+                   DISPLAY FUNCTION TRIM(ACCSTAT) NO ADVANCING
+                   DISPLAY '","created_at":"' NO ADVANCING
+                   DISPLAY FUNCTION TRIM(ACCCREATED) NO ADVANCING
+                   DISPLAY '"}' NO ADVANCING
+               ELSE
+                   MOVE 'Y' TO WSEOF
+               END-IF
+           END-PERFORM.
+
+           EXEC SQL CLOSE c_acc END-EXEC.
+           DISPLAY ']}'.
+
+      *================================================================*
+      * 3. LIST-TRANSACTIONS: Output JSON array of transactions        *
+      *================================================================*
+       DO-LIST-TRANSACTIONS.
+           EXEC SQL
+               SELECT COUNT(*) INTO :SQLCOUNT FROM transactions
+           END-EXEC.
+           MOVE SQLCOUNT TO WS-NUM-INT.
+
+           DISPLAY '{"status":"ok",' NO ADVANCING
+           DISPLAY '"total_transactions":' NO ADVANCING
+           DISPLAY FUNCTION TRIM(WS-NUM-INT) NO ADVANCING
+           DISPLAY ',"transactions":[' NO ADVANCING.
+
+           MOVE 'N' TO WSEOF.
+           MOVE 'Y' TO WSFIRSTROW.
+
+           EXEC SQL
+               DECLARE c_tx CURSOR FOR
+               SELECT id, from_account, to_account, amount,
+                      tx_type, COALESCE(description, ''),
+                      CAST(created_at AS VARCHAR(25)),
+                      status
+               FROM transactions
+               ORDER BY id DESC
+           END-EXEC.
+
+           EXEC SQL OPEN c_tx END-EXEC.
+
+           PERFORM UNTIL WSEOF = 'Y'
+               EXEC SQL
+                   FETCH c_tx INTO
+                       :TXID, :TXFROM, :TXTO,
+                       :TXAMT, :TXTYPE, :TXNOTE,
+                       :TXCREATED, :TXSTAT
+               END-EXEC
+               IF SQLCODE = 0
+                   IF WSFIRSTROW = 'N'
+                       DISPLAY ',' NO ADVANCING
+                   END-IF
+                   MOVE 'N' TO WSFIRSTROW
+                   MOVE TXID TO WS-NUM-INT
+                   MOVE TXAMT TO WS-NUM-DEC
+                   DISPLAY '{"id":' NO ADVANCING
+                   DISPLAY FUNCTION TRIM(WS-NUM-INT) NO ADVANCING
+                   DISPLAY ',"from_account":"' NO ADVANCING
+                   DISPLAY FUNCTION TRIM(TXFROM) NO ADVANCING
+                   DISPLAY '","to_account":"' NO ADVANCING
+                   DISPLAY FUNCTION TRIM(TXTO) NO ADVANCING
+                   DISPLAY '","amount":' NO ADVANCING
+                   DISPLAY FUNCTION TRIM(WS-NUM-DEC) NO ADVANCING
+                   DISPLAY ',"tx_type":"' NO ADVANCING
+                   DISPLAY FUNCTION TRIM(TXTYPE) NO ADVANCING
+                   DISPLAY '","description":"' NO ADVANCING
+                   DISPLAY FUNCTION TRIM(TXNOTE) NO ADVANCING
+                   DISPLAY '","created_at":"' NO ADVANCING
+                   DISPLAY FUNCTION TRIM(TXCREATED) NO ADVANCING
+                   DISPLAY '","status":"' NO ADVANCING
+                   DISPLAY FUNCTION TRIM(TXSTAT) NO ADVANCING
+                   DISPLAY '"}' NO ADVANCING
+               ELSE
+                   MOVE 'Y' TO WSEOF
+               END-IF
+           END-PERFORM.
+
+           EXEC SQL CLOSE c_tx END-EXEC.
+           DISPLAY ']}'.
+
+      *================================================================*
+      * 4. CREATE-ACCOUNT: Add a new account                           *
+      *================================================================*
+       DO-CREATE-ACCOUNT.
+           DISPLAY 2 UPON ARGUMENT-NUMBER.
+           ACCEPT ARG1 FROM ARGUMENT-VALUE.
+           DISPLAY 3 UPON ARGUMENT-NUMBER.
+           ACCEPT ARG2 FROM ARGUMENT-VALUE.
+           DISPLAY 4 UPON ARGUMENT-NUMBER.
+           ACCEPT ARG3 FROM ARGUMENT-VALUE.
+           DISPLAY 5 UPON ARGUMENT-NUMBER.
+           ACCEPT ARG4 FROM ARGUMENT-VALUE.
+           DISPLAY 6 UPON ARGUMENT-NUMBER.
+           ACCEPT ARG5 FROM ARGUMENT-VALUE.
+
+           IF ARG1 = SPACES OR ARG2 = SPACES
+               DISPLAY '{"status":"error",' NO ADVANCING
+               DISPLAY '"message":"Account no and name required"}'
+               MOVE 1 TO RETURN-CODE
+               EXIT PARAGRAPH
+           END-IF.
+
+           MOVE ARG1 TO ACCNO.
+           MOVE ARG2 TO ACCHOLDER.
+           IF ARG3 = SPACES
+               MOVE "GIRO" TO ACCTYPE
+           ELSE
+               MOVE FUNCTION UPPER-CASE(FUNCTION TRIM(ARG3))
+                 TO ACCTYPE
+           END-IF.
+
+           IF ARG4 = SPACES
+               MOVE 0 TO ACCBAL
+           ELSE
+               MOVE FUNCTION NUMVAL(ARG4) TO ACCBAL
+           END-IF.
+
+           IF ARG5 = SPACES
+               MOVE 0 TO ACCINT
+           ELSE
+               MOVE FUNCTION NUMVAL(ARG5) TO ACCINT
+           END-IF.
+
+           EXEC SQL
+               SELECT COUNT(*) INTO :ACCEXISTS
+               FROM accounts WHERE account_no = TRIM(:ACCNO)
+           END-EXEC.
+
+           IF ACCEXISTS > 0
+               DISPLAY '{"status":"error",' NO ADVANCING
+               DISPLAY '"message":"Account number already exists"}'
+               MOVE 1 TO RETURN-CODE
+               EXIT PARAGRAPH
+           END-IF.
+
+           MOVE "EUR" TO ACCCURR.
+           MOVE "ACTIVE" TO ACCSTAT.
+           EXEC SQL BEGIN WORK END-EXEC.
+           EXEC SQL
+               INSERT INTO accounts
+               (account_no, holder_name, account_type, balance,
+                currency, interest_rate, status)
+               VALUES
+               (:ACCNO, :ACCHOLDER, :ACCTYPE,
+                :ACCBAL, :ACCCURR, :ACCINT, :ACCSTAT)
+           END-EXEC.
+
+           IF ACCBAL > 0
+               MOVE "SYSTEM_INIT" TO TXFROM
+               MOVE "DEPOSIT" TO TXTYPE
+               MOVE "Ersteinlage Neukonto" TO TXNOTE
+               MOVE "SUCCESS" TO TXSTAT
+               EXEC SQL
+                   INSERT INTO transactions
+                   (from_account, to_account, amount, tx_type,
+                    description, status)
+                   VALUES
+                   (:TXFROM, :ACCNO, :ACCBAL,
+                    :TXTYPE, :TXNOTE, :TXSTAT)
+               END-EXEC
+           END-IF.
+
+           EXEC SQL COMMIT WORK END-EXEC.
+
+           MOVE ACCBAL TO WS-NUM-DEC.
+           DISPLAY '{"status":"ok",' NO ADVANCING
+           DISPLAY '"message":"Account created successfully",'
+             NO ADVANCING
+           DISPLAY '"account_no":"' NO ADVANCING
+           DISPLAY FUNCTION TRIM(ACCNO) NO ADVANCING
+           DISPLAY '","holder_name":"' NO ADVANCING
+           DISPLAY FUNCTION TRIM(ACCHOLDER) NO ADVANCING
+           DISPLAY '","balance":' NO ADVANCING
+           DISPLAY FUNCTION TRIM(WS-NUM-DEC) NO ADVANCING
+           DISPLAY '}'.
+
+      *================================================================*
+      * 5. TRANSFER: Atomic funds transfer                             *
+      *================================================================*
+       DO-TRANSFER.
+           DISPLAY 2 UPON ARGUMENT-NUMBER.
+           ACCEPT ARG1 FROM ARGUMENT-VALUE.
+           DISPLAY 3 UPON ARGUMENT-NUMBER.
+           ACCEPT ARG2 FROM ARGUMENT-VALUE.
+           DISPLAY 4 UPON ARGUMENT-NUMBER.
+           ACCEPT ARG3 FROM ARGUMENT-VALUE.
+           DISPLAY 5 UPON ARGUMENT-NUMBER.
+           ACCEPT ARG4 FROM ARGUMENT-VALUE.
+
+           MOVE ARG1 TO TXFROM.
+           MOVE ARG2 TO TXTO.
+           MOVE FUNCTION NUMVAL(ARG3) TO XFERAMT.
+           IF ARG4 = SPACES
+               MOVE "Ueberweisung" TO TXNOTE
+           ELSE
+               MOVE ARG4 TO TXNOTE
+           END-IF.
+
+           IF FUNCTION TRIM(TXFROM) = FUNCTION TRIM(TXTO)
+               DISPLAY '{"status":"error",' NO ADVANCING
+               DISPLAY '"message":"Accounts must be different"}'
+               MOVE 1 TO RETURN-CODE
+               EXIT PARAGRAPH
+           END-IF.
+
+           IF XFERAMT <= 0
+               DISPLAY '{"status":"error",' NO ADVANCING
+               DISPLAY '"message":"Amount must be greater than zero"}'
+               MOVE 1 TO RETURN-CODE
+               EXIT PARAGRAPH
+           END-IF.
+
+      * Atomic UPDATEs (GixSQL mangles FOR UPDATE into invalid SQL)
+           EXEC SQL BEGIN WORK END-EXEC.
+
+           EXEC SQL
+               SELECT balance INTO :FROMBAL
+               FROM accounts
+               WHERE account_no = TRIM(:TXFROM)
+           END-EXEC.
+
+           IF SQLCODE NOT = 0
+               EXEC SQL ROLLBACK WORK END-EXEC
+               DISPLAY '{"status":"error",' NO ADVANCING
+               DISPLAY '"message":"Source account not found"}'
+               MOVE 1 TO RETURN-CODE
+               EXIT PARAGRAPH
+           END-IF.
+
+           EXEC SQL
+               SELECT balance INTO :TOBAL
+               FROM accounts
+               WHERE account_no = TRIM(:TXTO)
+           END-EXEC.
+
+           IF SQLCODE NOT = 0
+               EXEC SQL ROLLBACK WORK END-EXEC
+               DISPLAY '{"status":"error",' NO ADVANCING
+               DISPLAY '"message":"Destination account not found"}'
+               MOVE 1 TO RETURN-CODE
+               EXIT PARAGRAPH
+           END-IF.
+
+           IF FROMBAL < XFERAMT
+               EXEC SQL ROLLBACK WORK END-EXEC
+               MOVE FROMBAL TO WS-NUM-DEC
+               MOVE XFERAMT TO WS-NUM-RATE
+               DISPLAY '{"status":"error",' NO ADVANCING
+               DISPLAY '"message":"Insufficient funds",' NO ADVANCING
+               DISPLAY '"balance":' NO ADVANCING
+               DISPLAY FUNCTION TRIM(WS-NUM-DEC) NO ADVANCING
+               DISPLAY ',"required":' NO ADVANCING
+               DISPLAY FUNCTION TRIM(WS-NUM-RATE) NO ADVANCING
+               DISPLAY '}'
+               MOVE 1 TO RETURN-CODE
+               EXIT PARAGRAPH
+           END-IF.
+
+           EXEC SQL
+               UPDATE accounts
+               SET balance = balance - :XFERAMT
+               WHERE account_no = TRIM(:TXFROM)
+                 AND balance >= :XFERAMT
+           END-EXEC.
+
+           IF SQLCODE NOT = 0
+               EXEC SQL ROLLBACK WORK END-EXEC
+               DISPLAY '{"status":"error",' NO ADVANCING
+               DISPLAY '"message":"Transfer conflict"}'
+               MOVE 1 TO RETURN-CODE
+               EXIT PARAGRAPH
+           END-IF.
+
+           EXEC SQL
+               UPDATE accounts
+               SET balance = balance + :XFERAMT
+               WHERE account_no = TRIM(:TXTO)
+           END-EXEC.
+
+           IF SQLCODE NOT = 0
+               EXEC SQL ROLLBACK WORK END-EXEC
+               DISPLAY '{"status":"error",' NO ADVANCING
+               DISPLAY '"message":"Dest update failed"}'
+               MOVE 1 TO RETURN-CODE
+               EXIT PARAGRAPH
+           END-IF.
+
+           MOVE "TRANSFER" TO TXTYPE.
+           MOVE "SUCCESS" TO TXSTAT.
+           EXEC SQL
+               INSERT INTO transactions
+               (from_account, to_account, amount, tx_type,
+                description, status)
+               VALUES
+               (:TXFROM, :TXTO, :XFERAMT,
+                :TXTYPE, :TXNOTE, :TXSTAT)
+           END-EXEC.
+
+           EXEC SQL COMMIT WORK END-EXEC.
+
+           MOVE XFERAMT TO WS-NUM-DEC.
+           DISPLAY '{"status":"ok",' NO ADVANCING
+           DISPLAY '"message":"Transfer completed successfully",'
+             NO ADVANCING
+           DISPLAY '"from_account":"' NO ADVANCING
+           DISPLAY FUNCTION TRIM(TXFROM) NO ADVANCING
+           DISPLAY '","to_account":"' NO ADVANCING
+           DISPLAY FUNCTION TRIM(TXTO) NO ADVANCING
+           DISPLAY '","amount":' NO ADVANCING
+           DISPLAY FUNCTION TRIM(WS-NUM-DEC) NO ADVANCING
+           DISPLAY ',"description":"' NO ADVANCING
+           DISPLAY FUNCTION TRIM(TXNOTE) NO ADVANCING
+           DISPLAY '"}'.
+
+      *================================================================*
+      * 6. DEPOSIT: Cash deposit                                       *
+      *================================================================*
+       DO-DEPOSIT.
+           DISPLAY 2 UPON ARGUMENT-NUMBER.
+           ACCEPT ARG1 FROM ARGUMENT-VALUE.
+           DISPLAY 3 UPON ARGUMENT-NUMBER.
+           ACCEPT ARG2 FROM ARGUMENT-VALUE.
+           DISPLAY 4 UPON ARGUMENT-NUMBER.
+           ACCEPT ARG3 FROM ARGUMENT-VALUE.
+
+           MOVE ARG1 TO TXTO.
+           MOVE FUNCTION NUMVAL(ARG2) TO XFERAMT.
+           IF ARG3 = SPACES
+               MOVE "Bareinzahlung" TO TXNOTE
+           ELSE
+               MOVE ARG3 TO TXNOTE
+           END-IF.
+
+           IF XFERAMT <= 0
+               DISPLAY '{"status":"error",' NO ADVANCING
+               DISPLAY '"message":"Amount must be greater than zero"}'
+               MOVE 1 TO RETURN-CODE
+               EXIT PARAGRAPH
+           END-IF.
+
+           EXEC SQL BEGIN WORK END-EXEC.
+
+           EXEC SQL
+               SELECT balance INTO :TOBAL
+               FROM accounts
+               WHERE account_no = TRIM(:TXTO)
+           END-EXEC.
+
+           IF SQLCODE NOT = 0
+               EXEC SQL ROLLBACK WORK END-EXEC
+               DISPLAY '{"status":"error",' NO ADVANCING
+               DISPLAY '"message":"Account not found"}'
+               MOVE 1 TO RETURN-CODE
+               EXIT PARAGRAPH
+           END-IF.
+
+           EXEC SQL
+               UPDATE accounts
+               SET balance = balance + :XFERAMT
+               WHERE account_no = TRIM(:TXTO)
+           END-EXEC.
+
+           COMPUTE NEWBAL = TOBAL + XFERAMT.
+
+           MOVE "BAR_EINZAHLUNG" TO TXFROM.
+           MOVE "DEPOSIT" TO TXTYPE.
+           MOVE "SUCCESS" TO TXSTAT.
+           EXEC SQL
+               INSERT INTO transactions
+               (from_account, to_account, amount, tx_type,
+                description, status)
+               VALUES
+               (:TXFROM, :TXTO, :XFERAMT,
+                :TXTYPE, :TXNOTE, :TXSTAT)
+           END-EXEC.
+
+           EXEC SQL COMMIT WORK END-EXEC.
+
+           MOVE XFERAMT TO WS-NUM-DEC.
+           MOVE NEWBAL TO WS-NUM-SUM.
+           DISPLAY '{"status":"ok",' NO ADVANCING
+           DISPLAY '"message":"Deposit successful",' NO ADVANCING
+           DISPLAY '"account_no":"' NO ADVANCING
+           DISPLAY FUNCTION TRIM(TXTO) NO ADVANCING
+           DISPLAY '","amount":' NO ADVANCING
+           DISPLAY FUNCTION TRIM(WS-NUM-DEC) NO ADVANCING
+           DISPLAY ',"new_balance":' NO ADVANCING
+           DISPLAY FUNCTION TRIM(WS-NUM-SUM) NO ADVANCING
+           DISPLAY '}'.
+
+      *================================================================*
+      * 7. CALC-INTEREST: Batch monthly interest job                   *
+      *================================================================*
+       DO-CALC-INTEREST.
+           MOVE 0 TO TOTALINT.
+           MOVE 0 TO INTACCS.
+           MOVE 'N' TO WSEOF.
+
+           EXEC SQL BEGIN WORK END-EXEC.
+
+           EXEC SQL
+               DECLARE c_intr CURSOR FOR
+               SELECT id, account_no, balance, interest_rate
+               FROM accounts
+               WHERE interest_rate > 0 AND balance > 0
+               ORDER BY id ASC
+           END-EXEC.
+
+           EXEC SQL OPEN c_intr END-EXEC.
+
+           PERFORM UNTIL WSEOF = 'Y'
+               EXEC SQL
+                   FETCH c_intr INTO
+                       :ACCID, :ACCNO, :ACCBAL, :ACCINT
+               END-EXEC
+               IF SQLCODE = 0
+                   COMPUTE CALCINT ROUNDED =
+                       ACCBAL * (ACCINT / 100) / 12
+                   IF CALCINT > 0
+                       COMPUTE NEWBAL = ACCBAL + CALCINT
+                       EXEC SQL
+                           UPDATE accounts
+                           SET balance = :NEWBAL
+                           WHERE id = :ACCID
+                       END-EXEC
+                       MOVE "ZINSLAUF" TO TXFROM
+                       MOVE "INTEREST" TO TXTYPE
+                       MOVE "Monatliche Zinsgutschrift" TO TXNOTE
+                       MOVE "SUCCESS" TO TXSTAT
+                       EXEC SQL
+                           INSERT INTO transactions
+                           (from_account, to_account, amount, tx_type,
+                            description, status)
+                           VALUES
+                           (:TXFROM, :ACCNO, :CALCINT,
+                            :TXTYPE, :TXNOTE, :TXSTAT)
+                       END-EXEC
+                       ADD CALCINT TO TOTALINT
+                       ADD 1 TO INTACCS
+                   END-IF
+               ELSE
+                   MOVE 'Y' TO WSEOF
+               END-IF
+           END-PERFORM.
+
+           EXEC SQL CLOSE c_intr END-EXEC.
+           EXEC SQL COMMIT WORK END-EXEC.
+
+           MOVE INTACCS TO WS-NUM-INT.
+           MOVE TOTALINT TO WS-NUM-DEC.
+
+           DISPLAY '{"status":"ok",' NO ADVANCING
+           DISPLAY '"message":"Interest batch completed",' NO ADVANCING
+           DISPLAY '"accounts_credited":' NO ADVANCING
+           DISPLAY FUNCTION TRIM(WS-NUM-INT) NO ADVANCING
+           DISPLAY ',"total_interest_paid":' NO ADVANCING
+           DISPLAY FUNCTION TRIM(WS-NUM-DEC) NO ADVANCING
+           DISPLAY '}'.

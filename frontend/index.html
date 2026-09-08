@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>COBOL CoreBank Admin | Betriebssteuerung</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="dark-theme">
+    <!-- Background glow ambient effects -->
+    <div class="ambient-glow glow-1"></div>
+    <div class="ambient-glow glow-2"></div>
+
+    <div class="app-container">
+        <!-- Navigation / Header -->
+        <header class="app-header">
+            <div class="header-brand">
+                <div class="brand-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="2" y="5" width="20" height="14" rx="2"></rect>
+                        <line x1="2" y1="10" x2="22" y2="10"></line>
+                        <circle cx="6" cy="15" r="1"></circle>
+                        <circle cx="10" cy="15" r="1"></circle>
+                    </svg>
+                </div>
+                <div>
+                    <h1 class="brand-title">COBOL<span>CoreBank</span></h1>
+                    <p class="brand-subtitle">Admin Interface • GnuCOBOL • PostgreSQL Parallel</p>
+                </div>
+            </div>
+
+            <div class="header-center">
+                <div class="status-badge status-badge-admin" id="engineStatusBadge">
+                    <span class="status-dot"></span>
+                    <span id="engineStatusText">Admin Online</span>
+                    <span class="status-latency" id="engineLatency">2ms</span>
+                </div>
+            </div>
+
+            <div class="header-actions">
+                <a class="btn btn-secondary" href="/simulator/" title="Kunden-Simulator öffnen">
+                    Simulator
+                </a>
+                <button class="btn btn-secondary" id="btnBatchInterest" title="Monatliche Zinsberechnung für alle Sparkonten durchführen">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="12" y1="1" x2="12" y2="23"></line>
+                        <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+                    </svg>
+                    Zinslauf (Batch)
+                </button>
+                <button class="btn btn-secondary" id="btnDepositModal">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="12" y1="5" x2="12" y2="19"></line>
+                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                    </svg>
+                    Einzahlung
+                </button>
+                <button class="btn btn-secondary" id="btnNewAccountModal">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                        <circle cx="8.5" cy="7" r="4"></circle>
+                        <line x1="20" y1="8" x2="20" y2="14"></line>
+                        <line x1="23" y1="11" x2="17" y2="11"></line>
+                    </svg>
+                    Neues Konto
+                </button>
+                <button class="btn btn-primary" id="btnTransferModal">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="22" y1="2" x2="11" y2="13"></line>
+                        <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                    </svg>
+                    Überweisung
+                </button>
+            </div>
+        </header>
+
+        <!-- KPI Metrics Grid -->
+        <section class="kpi-grid">
+            <div class="kpi-card">
+                <div class="kpi-header">
+                    <span class="kpi-label">Gesamtliquidität (Bank)</span>
+                    <div class="kpi-icon icon-emerald">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="12" y1="1" x2="12" y2="23"></line>
+                            <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+                        </svg>
+                    </div>
+                </div>
+                <div class="kpi-value" id="kpiTotalLiquidity">€ 0,00</div>
+                <div class="kpi-meta">Exakte Festkomma-Arithmetik (COMP-3)</div>
+            </div>
+
+            <div class="kpi-card">
+                <div class="kpi-header">
+                    <span class="kpi-label">Geführte Konten</span>
+                    <div class="kpi-icon icon-indigo">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                            <circle cx="9" cy="7" r="4"></circle>
+                            <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                            <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                        </svg>
+                    </div>
+                </div>
+                <div class="kpi-value" id="kpiAccountCount">0</div>
+                <div class="kpi-meta"><span id="kpiGiroCount">0</span> Giro • <span id="kpiSparCount">0</span> Spar • <span id="kpiBizCount">0</span> Business</div>
+            </div>
+
+            <div class="kpi-card">
+                <div class="kpi-header">
+                    <span class="kpi-label">Buchungsposten (Gesamt)</span>
+                    <div class="kpi-icon icon-cyan">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+                        </svg>
+                    </div>
+                </div>
+                <div class="kpi-value" id="kpiTransactionCount">0</div>
+                <div class="kpi-meta">Atomare ACID-Transaktionen via PostgreSQL</div>
+            </div>
+
+            <div class="kpi-card kpi-card-live">
+                <div class="kpi-header">
+                    <span class="kpi-label">Aktive Clients</span>
+                    <div class="kpi-icon icon-amber">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                            <circle cx="9" cy="7" r="4"></circle>
+                            <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                            <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                        </svg>
+                    </div>
+                </div>
+                <div class="kpi-value" id="kpiClientsActive">0</div>
+                <div class="kpi-meta">IPs mit Zugriff (letzte 45s)</div>
+            </div>
+
+            <div class="kpi-card kpi-card-live">
+                <div class="kpi-header">
+                    <span class="kpi-label">Aktive Verbindungen</span>
+                    <div class="kpi-icon icon-cyan">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+                        </svg>
+                    </div>
+                </div>
+                <div class="kpi-value" id="kpiConnectionsActive">0</div>
+                <div class="kpi-meta">TCP / HTTP in flight: <span id="kpiHttpInFlight">0</span></div>
+            </div>
+
+            <div class="kpi-card kpi-card-live">
+                <div class="kpi-header">
+                    <span class="kpi-label">Transaktionen / Sek.</span>
+                    <div class="kpi-icon icon-emerald">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+                        </svg>
+                    </div>
+                </div>
+                <div class="kpi-value" id="kpiTxPerSec">0.0</div>
+                <div class="kpi-meta">COBOL-Jobs · Fenster 5s</div>
+            </div>
+
+            <div class="kpi-card">
+                <div class="kpi-header">
+                    <span class="kpi-label">PostgreSQL Engine</span>
+                    <div class="kpi-icon icon-amber">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
+                            <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path>
+                            <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path>
+                        </svg>
+                    </div>
+                </div>
+                <div class="kpi-value" id="kpiDbSize">MVCC</div>
+                <div class="kpi-meta">Modus: <code class="mono-tag" id="kpiJournalModeTag">Row Locks</code></div>
+            </div>
+
+            <div class="kpi-card">
+                <div class="kpi-header">
+                    <span class="kpi-label">Parallel Worker Pool</span>
+                    <div class="kpi-icon icon-purple">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+                        </svg>
+                    </div>
+                </div>
+                <div class="kpi-value" id="kpiQueueDepth">0 aktiv</div>
+                <div class="kpi-meta"><span id="kpiProcessedCount">0</span> verarbeitet • Peak: <span id="kpiPeakDepth">0</span></div>
+            </div>
+        </section>
+
+        <!-- Main Workspace: Accounts & Transactions & COBOL Inspector -->
+        <main class="main-layout">
+            <!-- Left Area: Accounts & Transactions -->
+            <div class="primary-column">
+                <!-- Accounts Section -->
+                <section class="panel">
+                    <div class="panel-header">
+                        <div class="panel-title-group">
+                            <h2 class="panel-title">Kontenverwaltung</h2>
+                            <span class="panel-tag panel-tag-admin">ADMIN</span>
+                            <span class="panel-counter" id="accountsCounter">0 Konten</span>
+                        </div>
+                        <div class="panel-controls">
+                            <div class="search-box">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <circle cx="11" cy="11" r="8"></circle>
+                                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                                </svg>
+                                <input type="text" id="accountSearch" placeholder="Kunde oder IBAN suchen...">
+                            </div>
+                            <div class="filter-tabs" id="accountTypeFilter">
+                                <button class="filter-btn active" data-type="ALL">Alle</button>
+                                <button class="filter-btn" data-type="GIRO">Giro</button>
+                                <button class="filter-btn" data-type="SPARKONTO">Spar</button>
+                                <button class="filter-btn" data-type="BUSINESS">Business</button>
+                            </div>
+                            <button class="icon-btn" id="btnRefreshAccounts" title="Aktualisieren">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polyline points="23 4 23 10 17 10"></polyline>
+                                    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="accounts-grid" id="accountsGrid">
+                        <!-- Rendered by JS -->
+                        <div class="loading-placeholder">Lade Kontodaten (Admin)…</div>
+                    </div>
+                </section>
+
+                <!-- Transactions History Section -->
+                <section class="panel">
+                    <div class="panel-header">
+                        <div class="panel-title-group">
+                            <h2 class="panel-title">Buchungsjournal</h2>
+                            <span class="panel-tag panel-tag-admin">AUDIT</span>
+                            <span class="panel-counter" id="txCounter">0 Buchungen</span>
+                        </div>
+                        <div class="panel-controls">
+                            <div class="filter-tabs" id="txTypeFilter">
+                                <button class="filter-btn active" data-tx="ALL">Alle</button>
+                                <button class="filter-btn" data-tx="TRANSFER">Überweisungen</button>
+                                <button class="filter-btn" data-tx="DEPOSIT">Einzahlungen</button>
+                                <button class="filter-btn" data-tx="INTEREST">Zinsen</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="table-container">
+                        <table class="data-table" id="transactionsTable">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Zeitpunkt</th>
+                                    <th>Typ</th>
+                                    <th>Auftraggeber / Empfänger</th>
+                                    <th>Verwendungszweck</th>
+                                    <th class="text-right">Betrag</th>
+                                    <th class="text-center">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="transactionsBody">
+                                <!-- Rendered by JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+            </div>
+
+            <!-- Right Sidebar: Quick Transfer & COBOL Inspector -->
+            <aside class="sidebar-column">
+                <!-- Quick Transfer Card -->
+                <div class="panel quick-transfer-panel">
+                    <div class="panel-header">
+                        <h3 class="panel-title">Admin-Überweisung</h3>
+                        <span class="panel-tag panel-tag-admin">COBOL ACID</span>
+                    </div>
+                    <form id="quickTransferForm" class="panel-form">
+                        <div class="form-group">
+                            <label for="qtFromAccount">Belastungskonto (Von)</label>
+                            <select id="qtFromAccount" class="form-select" required>
+                                <option value="">Konto wählen...</option>
+                            </select>
+                            <div class="balance-hint" id="qtFromBalanceHint">Guthaben: -</div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="qtToAccount">Gutschriftskonto (An)</label>
+                            <select id="qtToAccount" class="form-select" required>
+                                <option value="">Empfänger wählen...</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="qtAmount">Überweisungsbetrag (€)</label>
+                            <div class="amount-input-group">
+                                <span class="input-prefix">€</span>
+                                <input type="number" id="qtAmount" class="form-input" min="0.01" step="0.01" placeholder="0.00" required>
+                            </div>
+                            <div class="quick-amount-chips">
+                                <button type="button" class="chip" data-amt="25">€25</button>
+                                <button type="button" class="chip" data-amt="50">€50</button>
+                                <button type="button" class="chip" data-amt="100">€100</button>
+                                <button type="button" class="chip" data-amt="250">€250</button>
+                                <button type="button" class="chip" data-amt="500">€500</button>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="qtDescription">Verwendungszweck</label>
+                            <input type="text" id="qtDescription" class="form-input" placeholder="z. B. Miete, Rechnung, Honorar" maxlength="60">
+                        </div>
+
+                        <button type="submit" class="btn btn-primary btn-block" id="btnExecuteTransfer">
+                            <span class="btn-text">Admin-Überweisung ausführen</span>
+                            <span class="btn-spinner hidden"></span>
+                        </button>
+                    </form>
+                </div>
+
+                <!-- CICS Transaction Queue & Concurrency Suite Panel -->
+                <div class="panel queue-panel">
+                    <div class="panel-header">
+                        <div class="panel-title-group">
+                            <svg class="panel-icon icon-purple" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 18px; height: 18px; margin-right: 6px;">
+                                <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                                <line x1="8" y1="21" x2="16" y2="21"></line>
+                                <line x1="12" y1="17" x2="12" y2="21"></line>
+                            </svg>
+                            <h3 class="panel-title">Last & Parallelbetrieb</h3>
+                        </div>
+                        <span class="badge badge-success" id="badgeJournalMode">PostgreSQL MVCC</span>
+                    </div>
+
+                    <div class="queue-stats-grid">
+                        <div class="q-stat-card">
+                            <span class="q-stat-label">Clients</span>
+                            <span class="q-stat-val" id="liveClientsVal">0</span>
+                            <span class="q-stat-sub">aktive IPs</span>
+                        </div>
+                        <div class="q-stat-card">
+                            <span class="q-stat-label">Verbindungen</span>
+                            <span class="q-stat-val" id="liveConnectionsVal">0</span>
+                            <span class="q-stat-sub">TCP aktiv</span>
+                        </div>
+                        <div class="q-stat-card">
+                            <span class="q-stat-label">TPS</span>
+                            <span class="q-stat-val text-accent" id="liveTpsVal">0.0</span>
+                            <span class="q-stat-sub">Tx / Sekunde</span>
+                        </div>
+                        <div class="q-stat-card">
+                            <span class="q-stat-label">HTTP in flight</span>
+                            <span class="q-stat-val" id="liveHttpVal">0</span>
+                            <span class="q-stat-sub">Peak: <span id="liveHttpPeakVal">0</span></span>
+                        </div>
+                        <div class="q-stat-card">
+                            <span class="q-stat-label">Warteschlange</span>
+                            <span class="q-stat-val" id="queueDepthVal">0</span>
+                            <span class="q-stat-sub">Peak: <span id="queuePeakVal">0</span></span>
+                        </div>
+                        <div class="q-stat-card">
+                            <span class="q-stat-label">Aktive Worker</span>
+                            <span class="q-stat-val" id="queueActiveVal">0</span>
+                            <span class="q-stat-sub">Parallel Pool</span>
+                        </div>
+                        <div class="q-stat-card">
+                            <span class="q-stat-label">Verarbeitet</span>
+                            <span class="q-stat-val text-success" id="queueProcessedVal">0</span>
+                            <span class="q-stat-sub">Fehler: <span id="queueFailedVal">0</span></span>
+                        </div>
+                        <div class="q-stat-card">
+                            <span class="q-stat-label">Ø Latenz</span>
+                            <span class="q-stat-val text-accent" id="queueLatencyVal">0 ms</span>
+                            <span class="q-stat-sub">pro COBOL-Job</span>
+                        </div>
+                    </div>
+
+                    <div class="stress-test-box">
+                        <div class="stress-header">
+                            <span class="stress-title">100 Parallele Anfragen (Realbetrieb-Test)</span>
+                            <span class="stress-tag">Lasttest</span>
+                        </div>
+                        <p class="stress-desc">Testet 100 simultane HTTP-Transaktionen gegen die COBOL-Engine:</p>
+                        <div class="stress-buttons">
+                            <button type="button" class="btn btn-secondary btn-sm" id="btnStressTransfers" title="100 parallele Buchungen über PostgreSQL Row-Locks">
+                                🚀 100 Transfers (Schreibend)
+                            </button>
+                            <button type="button" class="btn btn-secondary btn-sm" id="btnStressReads" title="100 parallele Lesezugriffe über PostgreSQL MVCC">
+                                ⚡ 100 Reads (Lesend)
+                            </button>
+                        </div>
+                        <div class="stress-progress-container hidden" id="stressProgress">
+                            <div class="progress-bar-bg">
+                                <div class="progress-bar-fill" id="stressProgressFill"></div>
+                            </div>
+                            <div class="stress-status-text" id="stressStatusText">Starte 100 simultane Anfragen...</div>
+                        </div>
+                        <div class="stress-results-box hidden" id="stressResultsBox">
+                            <!-- Populated by JS -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- COBOL Execution Inspector -->
+                <div class="panel inspector-panel">
+                    <div class="panel-header">
+                        <div class="panel-title-group">
+                            <svg class="inspector-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="4 17 10 11 4 5"></polyline>
+                                <line x1="12" y1="19" x2="20" y2="19"></line>
+                            </svg>
+                            <h3 class="panel-title">COBOL Core Inspector</h3>
+                            <span class="panel-tag panel-tag-admin">DEBUG</span>
+                        </div>
+                        <span class="code-pill" id="inspectorDuration">0 ms</span>
+                    </div>
+                    <div class="inspector-meta">
+                        <div>Kommando: <span id="inspectorCommand" class="highlight-cmd">INIT</span></div>
+                        <div>Zeitstempel: <span id="inspectorTime">-</span></div>
+                    </div>
+                    <div class="terminal-view">
+                        <div class="terminal-bar">
+                            <span class="terminal-dot red"></span>
+                            <span class="terminal-dot yellow"></span>
+                            <span class="terminal-dot green"></span>
+                            <span class="terminal-title">cobol_bank.exe CLI stdout</span>
+                        </div>
+                        <pre class="terminal-body" id="inspectorStdout">{"status": "ok"}</pre>
+                    </div>
+                </div>
+            </aside>
+        </main>
+    </div>
+
+    <!-- Modal: Neues Konto anlegen -->
+    <div class="modal-overlay hidden" id="newAccountModal">
+        <div class="modal-dialog">
+            <div class="modal-header">
+                <h3 class="modal-title">Neues Bankkonto eröffnen</h3>
+                <button class="modal-close" id="btnCloseNewAccountModal">&times;</button>
+            </div>
+            <form id="newAccountForm" class="modal-body">
+                <div class="form-group">
+                    <label for="naAccountNo">IBAN / Kontonummer</label>
+                    <div class="iban-gen-group">
+                        <input type="text" id="naAccountNo" class="form-input mono" required>
+                        <button type="button" class="btn btn-secondary btn-sm" id="btnGenerateIban">Generieren</button>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="naHolderName">Kontoinhaber / Firma</label>
+                    <input type="text" id="naHolderName" class="form-input" placeholder="z. B. Sarah Connor oder CloudNet GmbH" required>
+                </div>
+                <div class="form-row">
+                    <div class="form-group col">
+                        <label for="naAccountType">Kontomodell</label>
+                        <select id="naAccountType" class="form-select" required>
+                            <option value="GIRO">Girokonto (0% Zinsen)</option>
+                            <option value="SPARKONTO" selected>Sparkonto / Tagesgeld</option>
+                            <option value="BUSINESS">Geschäftskonto</option>
+                        </select>
+                    </div>
+                    <div class="form-group col">
+                        <label for="naInterestRate">Zinssatz (% p.a.)</label>
+                        <input type="number" id="naInterestRate" class="form-input" value="2.50" min="0" max="15" step="0.05">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="naInitialDeposit">Ersteinlage (€)</label>
+                    <div class="amount-input-group">
+                        <span class="input-prefix">€</span>
+                        <input type="number" id="naInitialDeposit" class="form-input" value="1000.00" min="0" step="10">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" id="btnCancelNewAccount">Abbrechen</button>
+                    <button type="submit" class="btn btn-primary">Konto anlegen</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal: Bareinzahlung -->
+    <div class="modal-overlay hidden" id="depositModal">
+        <div class="modal-dialog">
+            <div class="modal-header">
+                <h3 class="modal-title">Bareinzahlung / Gutschrift</h3>
+                <button class="modal-close" id="btnCloseDepositModal">&times;</button>
+            </div>
+            <form id="depositForm" class="modal-body">
+                <div class="form-group">
+                    <label for="depAccount">Zielkonto</label>
+                    <select id="depAccount" class="form-select" required>
+                        <option value="">Konto auswählen...</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="depAmount">Einzahlungsbetrag (€)</label>
+                    <div class="amount-input-group">
+                        <span class="input-prefix">€</span>
+                        <input type="number" id="depAmount" class="form-input" min="1.00" step="0.50" placeholder="500.00" required>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="depDescription">Buchungstext</label>
+                    <input type="text" id="depDescription" class="form-input" value="Bareinzahlung Filiale">
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" id="btnCancelDeposit">Abbrechen</button>
+                    <button type="submit" class="btn btn-primary">Einzahlung buchen</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Floating Toast Container -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script src="js/app.js"></script>
+</body>
+</html>
