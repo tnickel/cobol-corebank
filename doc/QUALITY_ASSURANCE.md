@@ -8,7 +8,9 @@ COBOL CoreBank ist ein **lauffähiges lokales Showcase-Projekt** mit vereinfacht
 
 Thomas Nickel beschreibt seine Arbeitsweise so: KI unterstützt Implementierung, Fehlersuche und Gegenprüfung. Teilweise werden mehrere Modelle in wiederholten Zyklen eingesetzt, Ergebnisse miteinander verglichen und mit Unit-Tests, Regressionstests sowie manuellen Prüfungen kontrolliert. Das Ziel ist, Fehler systematisch zu finden und ihre Wiederkehr zu verhindern.
 
-Diese Beschreibung stammt vom Projektentwickler. Das Repository enthält keine vollständigen Protokolle der einzelnen Modellaufrufe und keine lückenlosen manuellen Testprotokolle. Daraus lassen sich weder eine unabhängige Vierfachprüfung jeder Änderung noch eine Fehlerquote ableiten. Mehrere Modelle können denselben Fehler übersehen; entscheidend sind konkrete Prüffälle, reproduzierbare Ergebnisse und die fachliche Bewertung durch den Entwickler. Eine Zusicherung von Fehlerfreiheit wäre durch den aktuellen Stand nicht gedeckt.
+Zum beschriebenen Vorgehen gehören auch KI-gestütztes Debugging und die Auswertung von Logdateien. Wenn ein Assistent nicht weiterkommt, prüft Thomas Nickel selbst den betroffenen Code und gibt konkrete Anweisungen für die weitere Fehlersuche oder Korrektur. An kritischen Stellen lässt er sich vorgeschlagenen Code zeigen und erklären, hinterfragt Annahmen und steuert die Überarbeitung. Die technische Beurteilung bleibt damit beim Entwickler; KI unterstützt die Analyse.
+
+Diese Beschreibung stammt vom Projektentwickler und erläutert seine projektübergreifende Arbeitsweise. Das Repository enthält keine vollständigen Protokolle der einzelnen Modellaufrufe und keine lückenlosen manuellen Testprotokolle. Daraus lassen sich weder eine unabhängige Vierfachprüfung jeder Änderung noch eine Fehlerquote ableiten. Mehrere Modelle können denselben Fehler übersehen; entscheidend sind konkrete Prüffälle, reproduzierbare Ergebnisse und die fachliche Bewertung durch den Entwickler. Eine Zusicherung von Fehlerfreiheit wäre durch den aktuellen Stand nicht gedeckt.
 
 ## Vorhandene Tests
 

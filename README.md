@@ -198,6 +198,8 @@ Die Suite enthält **5 Simulator-Tests gegen eine Mock-Bank**, **5 Server-Integr
 
 Ich nutze KI für Implementierung, Gegenprüfung und die Suche nach Randfällen. Nach meiner beschriebenen Arbeitsweise kombiniere ich dafür teilweise mehrere Modelle mit Unit-Tests, Regressionstests und manuellen Prüfungen in wiederholten Korrekturzyklen. Die Verantwortung für Anforderungen, Bewertung der Ergebnisse und Freigabe bleibt bei mir.
 
+Zum Debuggen und Auswerten von Logdateien setze ich ebenfalls KI ein. Wenn ein Assistent nicht weiterkommt, prüfe ich selbst den betroffenen Code und gebe konkrete Anweisungen für die weitere Fehlersuche oder Korrektur. An kritischen Stellen lasse ich mir vorgeschlagenen Code zeigen und erklären, hinterfrage die Annahmen und steuere die Überarbeitung. Diese technische Prüfung durch mich ergänzt die automatisierten und manuellen Tests.
+
 Für dieses Repository ist konkret nachprüfbar, welche Tests existieren und welche davon ausgeführt wurden. Ein positives KI-Review ist kein Testnachweis; mehrere zustimmende Modelle garantieren keine Fehlerfreiheit. Der [Qualitätsbericht](doc/QUALITY_ASSURANCE.md) trennt diesen Arbeitsansatz, gemessene Ergebnisse und offene Prüfaufgaben. Er enthält auch einen neu gefundenen Nebenläufigkeitsfall, den die vorhandenen Tests nicht absichern.
 
 ---
