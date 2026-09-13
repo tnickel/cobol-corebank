@@ -86,6 +86,8 @@ Animation: `requestAnimationFrame` mit Interpolation der Anzeigewerte; Daten kom
 - Historie mit Typfilter (`TRANSFER`, `DEPOSIT`, `INTEREST`)
 - Daten aus `GET /api/transactions`
 
+„AUDIT“ ist hier eine UI-Bezeichnung für das Demo-Journal. Unveränderbarkeit oder Revisionssicherheit werden damit nicht zugesichert; siehe [Qualitätsbericht](QUALITY_ASSURANCE.md).
+
 ### Admin-Überweisung
 
 - Formular → `POST /api/transfer`

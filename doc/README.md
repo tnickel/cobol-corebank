@@ -13,6 +13,7 @@ Einstieg auch über das ausführliche Root-**[README.md](../README.md)** (Tech S
 | **[API.md](API.md)** | REST-API (Banking, Status, Stress, Simulate inkl. `continuous`) |
 | **[OPERATIONS.md](OPERATIONS.md)** | Start/Stop, Build, Docker, Umgebungsvariablen, **Tests** |
 | **[CODE_REVIEW.md](CODE_REVIEW.md)** | Review-Findings, behobene Bugs, Demo-Sicherheit |
+| **[QUALITY_ASSURANCE.md](QUALITY_ASSURANCE.md)** | Test-/Reviewstand vom 13.09.2026, KI-gestützte Arbeitsweise, belegte Ergebnisse und offene Fälle |
 
 ## Schnellstart
 

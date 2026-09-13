@@ -13,6 +13,8 @@ Standard-GnuCOBOL-Pfad:
 
 `C:\Users\tnickel\AppData\Local\Programs\GnuCOBOL 3.2`
 
+Dieser Pfad steht derzeit fest in `scripts/build_cobol.ps1` und `backend/server.js`. Auf einem anderen Rechner beide Stellen anpassen. GixSQL und die PostgreSQL-Treiber müssen in dieser Installation verfügbar sein. Das Repository enthält keine fertige EXE; sie wird lokal gebaut.
+
 ---
 
 ## Start-Skripte
@@ -71,7 +73,7 @@ Nach Änderungen an `.sqb` immer neu bauen.
 | Container | `cobolbank-postgres` |
 | Port | `5432` |
 | User / Pass / DB | `cobol` / `cobol` / `cobolbank` |
-| Volume | `cobolbank_pgdata` |
+| Compose-Volume-Schlüssel | `postgres_data` (Docker-Name mit Projektpräfix) |
 
 COBOL-DSN: `pgsql://127.0.0.1:5432/cobolbank?native_cursors=off`  
 Auth: `cobol.cobol`
@@ -98,6 +100,8 @@ npm run test:integration REM Live-Server: Simulator-Writes + system-status KPIs
 ```
 
 Die Integration prüft u. a., dass unter Last `queue.active_workers` / `recent_active_workers`, `live.clients_active`, `simulator.stats.write_ok` und das Journal wachsen — also das, was das Admin-UI anzeigt.
+
+**Testdaten:** Die Integration schreibt Überweisungen/Einzahlungen in die konfigurierte Datenbank und kann einen laufenden Simulator stoppen. Nur mit entbehrlichen Demo-Daten ausführen. Die vier Admin-Tests prüfen Datenstrukturen, nicht die Browserdarstellung. `TEST_BASE_URL` setzt bei Bedarf die Zieladresse der Live-Tests. Der aktuelle Ausführungsstand und die fachlichen Grenzen stehen in [QUALITY_ASSURANCE.md](QUALITY_ASSURANCE.md).
 
 Beispiel:
 

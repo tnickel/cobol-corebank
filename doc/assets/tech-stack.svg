@@ -38,7 +38,7 @@
   <rect x="488" y="320" width="200" height="120" rx="16" fill="#0f2740" stroke="#22d3ee" stroke-width="2"/>
   <text x="588" y="358" text-anchor="middle" fill="#67e8f9" font-family="Arial, Helvetica, sans-serif" font-size="12" font-weight="700">ENGINE *</text>
   <text x="588" y="386" text-anchor="middle" fill="#ecfeff" font-family="Arial, Helvetica, sans-serif" font-size="15" font-weight="700">GnuCOBOL</text>
-  <text x="588" y="410" text-anchor="middle" fill="#94a3b8" font-family="Arial, Helvetica, sans-serif" font-size="11">GixSQL / ACID SQL</text>
+    <text x="588" y="410" text-anchor="middle" fill="#94a3b8" font-family="Arial, Helvetica, sans-serif" font-size="11">GixSQL / Embedded SQL</text>
 
   <rect x="704" y="320" width="200" height="120" rx="16" fill="#15203b" stroke="#336791" stroke-opacity="0.8"/>
   <text x="804" y="358" text-anchor="middle" fill="#93c5fd" font-family="Arial, Helvetica, sans-serif" font-size="12" font-weight="700">DATA</text>

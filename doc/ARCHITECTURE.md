@@ -6,7 +6,7 @@
 
 ## 1. Zweck
 
-Referenz-**Core-Banking**-Anwendung im Mainframe-Stil (COBOL + Embedded SQL), angebunden an:
+Lokales **Core-Banking-Showcase** mit COBOL + Embedded SQL, angebunden an:
 
 - **PostgreSQL 16** (echter Parallelbetrieb / MVCC)
 - **Node.js-API-Bridge** (Prozess-Spawn der COBOL-Engine)
@@ -108,9 +108,9 @@ cobol/
 | `LIST_ACCOUNTS` | — | JSON Konten + Summen |
 | `LIST_TRANSACTIONS` | — | JSON Journal |
 | `CREATE_ACCOUNT` | IBAN, Name, Typ, Saldo, Zins | Neues Konto |
-| `TRANSFER` | From, To, Betrag, Text | Atomare Überweisung |
+| `TRANSFER` | From, To, Betrag, Text | Überweisung in einer DB-Transaktion; offene Nebenläufigkeitsfälle siehe [Qualitätsbericht](QUALITY_ASSURANCE.md) |
 | `DEPOSIT` | To, Betrag, Text | Bareinzahlung |
-| `CALC_INTEREST` | — | Zinsgutschrift Sparkonten |
+| `CALC_INTEREST` | — | Monatliche Beispielverzinsung aller Konten mit positivem Zinssatz und Saldo |
 
 ### GixSQL-Fallen (kritisch)
 
@@ -118,7 +118,7 @@ cobol/
 2. Keine SQL-Keywords als Variablen (`DESC` → `TXNOTE`).
 3. `TRIM(:HOSTVAR)` in WHERE-Klauseln (COBOL space-padded).
 4. **`native_cursors=off`** in der DSN — sonst leere Cursor-Ergebnisse unter PostgreSQL.
-5. **`FOR UPDATE` nicht verwenden** — GixSQL erzeugt ungültiges SQL. Stattdessen: `UPDATE … SET balance = balance ± :amt` und bei Transfers **Summenerhaltungsprüfung** der beiden Konten (erkennt 0-Row-Debits).
+5. Im bisherigen Projektreview wurden Probleme mit `FOR UPDATE` im verwendeten GixSQL-Setup dokumentiert. Der aktuelle Code nutzt `UPDATE … SET balance = balance ± :amt` und einen Summenvergleich. Dieser Vergleich erkennt nicht jeden 0-Row-Debit unter Nebenläufigkeit; er ersetzt keine belastbare Sperr-/Zeilenzählstrategie. Siehe [Gegenbeispiel](QUALITY_ASSURANCE.md).
 6. Timestamps: `CAST(created_at AS VARCHAR(25))` (kein `TO_CHAR` mit `HH24:MI` — `:MI` wird als Host-Variable gelesen).
 7. JSON nur über `DISPLAY … NO ADVANCING`.
 
@@ -131,6 +131,8 @@ cobol/
 - `DO-TRANSFER` — atomare Debit/Credit-Updates, Conservation-Check, Journal, `COMMIT`/`ROLLBACK`
 - `DO-DEPOSIT` — Gutschrift + Journal
 - `DO-CALC-INTEREST` — `balance = balance + :CALCINT` (kein absolutes Überschreiben)
+
+Geldfelder sind als dezimale COBOL-Felder, etwa `PIC S9(9)V99`, implementiert, ohne `COMP-3`. Für Salden und Beträge sind damit neun Vorkommastellen vorgesehen, während `NUMERIC(12,2)` in PostgreSQL zehn erlaubt. Eine konsistente Grenzwertprüfung ist noch nachzuweisen. Der Zinslauf verwendet `ROUNDED` und `balance * (interest_rate / 100) / 12`; eine Abrechnungsperiode oder Verhinderung wiederholter Zinsgutschriften ist nicht implementiert.
 
 ---
 
@@ -163,7 +165,7 @@ cobol/
 | `status` | `VARCHAR(15)` | Default `SUCCESS` |
 | `created_at` | `TIMESTAMP` | Buchungszeit |
 
-Docker: Service `postgres`, Container `cobolbank-postgres`, Volume `cobolbank_pgdata`.
+Docker: Service `postgres`, Container `cobolbank-postgres`, Compose-Volume-Schlüssel `postgres_data` (der tatsächliche Docker-Name erhält in der Regel einen Projektpräfix).
 
 ---
 
@@ -172,8 +174,8 @@ Docker: Service `postgres`, Container `cobolbank-postgres`, Volume `cobolbank_pg
 ### Worker-Pool (`BankTransactionQueue`)
 
 - Default-Concurrency: **`TX_CONCURRENCY=16`** (env).
-- Schreibende API-Calls laufen über den Pool; Lesen (`LIST_*`) parallel ungequeued.
-- Retry (max. 3) bei Deadlock / Serialize / Lock-Timeout.
+- Lesende (`LIST_*`) und schreibende Banking-API-Calls laufen über denselben Pool. Der Bootstrap-Aufruf `INIT` erfolgt direkt.
+- Höchstens drei Ausführungsversuche, wenn die zurückgelieferte Fehlermeldung auf Deadlock, Serialisierung oder Lock-Timeout passt. Generische COBOL-Fehlermeldungen wie `Transfer conflict` lösen diesen Retry nicht aus.
 
 ### LiveMetrics
 

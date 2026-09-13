@@ -28,7 +28,7 @@ Admin parallel: http://127.0.0.1:3000/ (Worker-Pool, TPS, Journal).
                                                     ▼
                                               Banking-API
                                               Queue → COBOL → PostgreSQL
-                                              (echte ACID-Buchungen + Journal)
+                                              (DB-Transaktionen + Journal)
 ```
 
 - **Dauerbetrieb:** Clients loopen bis Stop — simuliert laufenden Filial-/Online-Betrieb.
@@ -52,10 +52,12 @@ Admin parallel: http://127.0.0.1:3000/ (Worker-Pool, TPS, Journal).
 
 | Mix | Verhalten |
 |---|---|
-| **`ops`** | ~55 % Transfer · ~35 % Deposit · ~15 % Read |
+| **`ops`** | Auswahlzyklus: 55 % Transfer · 35 % Deposit · 10 % Read; tatsächlicher HTTP-Mix kann durch zusätzliche Kontenabfragen/Nachschub abweichen |
 | `mixed` / `transfer` / `deposit` / `read` | wie bisher |
 
 Preset **Produktion** = Dauerbetrieb + Mix `ops`.
+
+Der Name dieses UI-Presets bezeichnet ein Lastszenario im Showcase. Er ist keine Aussage zur Produktionsreife. Ob einzelne Buchungen fachlich korrekt sind, muss zusätzlich geprüft werden; steigende Zähler allein belegen das nicht. Siehe [Qualitätsbericht](QUALITY_ASSURANCE.md).
 
 ---
 
